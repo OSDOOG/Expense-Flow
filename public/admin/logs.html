@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="ประวัติและบันทึกการใช้งานระบบ ตรวจสอบย้อนหลัง (Audit Logs)">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💸</text></svg>">
+  <title>ประวัติและบันทึกการใช้งาน (Audit Logs) | ผู้ดูแลระบบ</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <nav class="navbar">
+    <a href="/app" class="brand">💸 Expense<span>Flow</span> <small style="font-size: 0.75rem; color: #c084fc; border: 1px solid #c084fc; padding: 2px 6px; border-radius: 4px;">ADMIN CONSOLE</small></a>
+    <div class="nav-links">
+      <a href="/app" class="nav-link">← กลับสู่หน้าแอปพลิเคชัน</a>
+      <div id="user-profile-badge" class="user-badge"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+      <div>
+        <h2>📜 ประวัติและบันทึกการใช้งานระบบ (Audit Logs)</h2>
+        <p style="color: var(--text-muted); font-size: 0.85rem;">
+          เก็บบันทึกถาวรใน PostgreSQL รองรับการค้นหา กรองเหตุการณ์ และไม่บันทึกข้อมูลรหัสผ่าน
+        </p>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+      <a href="/admin/acl-matrix" class="nav-link">📋 ตาราง ACL Matrix</a>
+      <a href="/admin/users" class="nav-link">👥 จัดการผู้ใช้งาน</a>
+      <a href="/admin/logs" class="nav-link active" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">📜 ประวัติ Audit Logs</a>
+    </div>
+
+    <div class="card" style="padding: 1.2rem 1.6rem;">
+      <div style="display: flex; gap: 0.85rem; flex-wrap: wrap; align-items: center;">
+        <input type="text" id="logSearch" class="form-control" placeholder="🔍 ค้นหา ชื่อผู้ใช้ หรือ ข้อความ..." style="max-width: 230px;" oninput="loadLogs(1)">
+        
+        <select id="actionFilter" class="form-control" style="max-width: 170px;" onchange="loadLogs(1)">
+          <option value="">ทุกการกระทำ (All Actions)</option>
+          <option value="LOGIN_SUCCESS">LOGIN_SUCCESS</option>
+          <option value="LOGIN_FAILED">LOGIN_FAILED</option>
+          <option value="LOGOUT">LOGOUT</option>
+          <option value="CREATE">CREATE</option>
+          <option value="UPDATE">UPDATE</option>
+          <option value="DELETE">DELETE</option>
+          <option value="ACL_UPDATE">ACL_UPDATE</option>
+          <option value="FILE_UPLOAD">FILE_UPLOAD</option>
+          <option value="FILE_VIEW">FILE_VIEW</option>
+          <option value="ACCESS_DENIED">ACCESS_DENIED (สิทธิ์ถูกบล็อก)</option>
+        </select>
+
+        <select id="resourceFilter" class="form-control" style="max-width: 150px;" onchange="loadLogs(1)">
+          <option value="">ทุกโมดูล (All Resources)</option>
+          <option value="AUTH">AUTH</option>
+          <option value="EXPENSE">EXPENSE</option>
+          <option value="FILE">FILE</option>
+          <option value="ACL">ACL</option>
+          <option value="USER">USER</option>
+          <option value="ROLE">ROLE</option>
+          <option value="PERMISSION">PERMISSION</option>
+        </select>
+
+        <div style="display: flex; align-items: center; gap: 0.4rem; background: var(--btn-secondary-bg); padding: 0.35rem 0.7rem; border-radius: 10px; border: 1px solid var(--border-color); flex-wrap: wrap;">
+          <span style="font-size: 0.8rem; color: var(--text-main); font-weight: 600;">📅 วันที่:</span>
+          <input type="date" id="startDateFilter" class="form-control" style="padding: 0.35rem 0.55rem; font-size: 0.82rem; width: auto;" title="ตั้งแต่วันที่" onchange="loadLogs(1)">
+          <input type="time" id="startTimeFilter" class="form-control" style="padding: 0.35rem 0.45rem; font-size: 0.82rem; width: auto;" title="เวลาเริ่มต้น" onchange="loadLogs(1)">
+          <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">-</span>
+          <input type="date" id="endDateFilter" class="form-control" style="padding: 0.35rem 0.55rem; font-size: 0.82rem; width: auto;" title="ถึงวันที่" onchange="loadLogs(1)">
+          <input type="time" id="endTimeFilter" class="form-control" style="padding: 0.35rem 0.45rem; font-size: 0.82rem; width: auto;" title="เวลาสิ้นสุด" onchange="loadLogs(1)">
+        </div>
+
+        <button class="btn btn-secondary btn-sm" onclick="resetFilters()">🔄 ล้างตัวกรอง</button>
+        <button class="btn btn-primary btn-sm" onclick="downloadLogsCsv()" style="margin-left: auto;">📥 ดาวน์โหลด Log (CSV)</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding: 0;">
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 70px; text-align: center;">ลำดับ</th>
+              <th>วัน-เวลา</th>
+              <th>ผู้กระทำ</th>
+              <th>Action</th>
+              <th>Resource</th>
+              <th>รายละเอียดเหตุการณ์</th>
+              <th>IP Address</th>
+              <th>สถานะ</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody">
+            <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2.5rem;">กำลังโหลดข้อมูล Logs...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="paginationContainer" style="display: flex; justify-content: space-between; align-items: center; padding: 1.2rem 1.6rem; border-top: 1px solid var(--border-color); flex-wrap: wrap; gap: 1rem;">
+        <div id="paginationInfo" style="color: var(--text-muted); font-size: 0.88rem;">
+          กำลังโหลดข้อมูล...
+        </div>
+        <div id="paginationControls" style="display: flex; align-items: center; gap: 0.4rem;">
+          
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="toast-container"></div>
+  <script src="/js/api.js"></script>
+  <script>
+    let currentPage = 1;
+    const pageSize = 50;
+
+    async function init() {
+      await initUserNavbar();
+      await loadLogs(1);
+    }
+
+    function formatIsoDate(val) {
+      if (!val) return '';
+      const parts = val.split('-');
+      if (parts.length === 3) {
+        let year = parseInt(parts[0], 10);
+        if (year > 2400) year -= 543;
+        return `${year}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
+      return val;
+    }
+
+    async function loadLogs(page = 1) {
+      currentPage = page;
+      const search = document.getElementById('logSearch').value;
+      const action = document.getElementById('actionFilter').value;
+      const resource = document.getElementById('resourceFilter').value;
+      const startDate = formatIsoDate(document.getElementById('startDateFilter').value);
+      const endDate = formatIsoDate(document.getElementById('endDateFilter').value);
+      const startTime = document.getElementById('startTimeFilter').value;
+      const endTime = document.getElementById('endTimeFilter').value;
+      const tbody = document.getElementById('logsTableBody');
+      const infoEl = document.getElementById('paginationInfo');
+      const controlsEl = document.getElementById('paginationControls');
+
+      let url = `/api/admin/logs?page=${currentPage}&limit=${pageSize}` +
+        `&search=${encodeURIComponent(search)}` +
+        `&action=${encodeURIComponent(action)}` +
+        `&resource=${encodeURIComponent(resource)}` +
+        `&startDate=${encodeURIComponent(startDate)}` +
+        `&endDate=${encodeURIComponent(endDate)}` +
+        `&startTime=${encodeURIComponent(startTime)}` +
+        `&endTime=${encodeURIComponent(endTime)}`;
+
+      try {
+        const res = await api.get(url);
+        const logs = res.data;
+        const pagination = res.pagination || { page: 1, limit: 50, totalRecords: logs.length, totalPages: 1 };
+
+        if (!logs || logs.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2.5rem;">🔍 ไม่พบบันทึกประวัติในเงื่อนไขนี้</td></tr>`;
+          infoEl.innerHTML = `แสดงทั้งหมด <strong>0</strong> รายการ`;
+          controlsEl.innerHTML = '';
+          return;
+        }
+
+        const startIdx = (pagination.page - 1) * pagination.limit;
+
+        tbody.innerHTML = logs.map((l, index) => {
+          const rowNumber = startIdx + index + 1;
+          let statusBadge = l.status === 'SUCCESS' ? '<span class="badge badge-PAID">SUCCESS</span>' : '<span class="badge badge-REJECTED">FAILED</span>';
+          let actionColor = l.action.includes('DENIED') || l.action.includes('FAILED') ? 'color: var(--danger); font-weight: bold;' : (l.action.includes('ACL') ? 'color: #c084fc; font-weight: bold;' : '');
+
+          return `
+            <tr>
+              <td style="text-align: center; color: var(--text-muted); font-weight: 700; font-size: 0.85rem;">#${rowNumber}</td>
+              <td style="white-space: nowrap; font-size: 0.8rem; color: var(--text-muted);">${formatDate(l.created_at)}</td>
+              <td>
+                <strong>${l.username}</strong>
+                ${l.full_name ? `<br><small style="color: var(--text-muted); font-size: 0.78rem;">${l.full_name}</small>` : ''}
+              </td>
+              <td><span style="${actionColor}">${l.action}</span></td>
+              <td><span class="role-pill role-Employee" style="font-size: 0.7rem;">${l.resource}</span></td>
+              <td>${l.details || '-'}</td>
+              <td><code style="font-size: 0.8rem;">${l.ip_address || '-'}</code></td>
+              <td>${statusBadge}</td>
+            </tr>
+          `;
+        }).join('');
+
+        const endIdx = Math.min(startIdx + logs.length, pagination.totalRecords);
+        infoEl.innerHTML = `แสดงรายการที่ <strong>${startIdx + 1} - ${endIdx}</strong> จากทั้งหมด <strong>${pagination.totalRecords.toLocaleString()}</strong> รายการ (หน้า ${pagination.page} / ${pagination.totalPages})`;
+
+        renderPaginationButtons(pagination);
+
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--danger); padding: 2rem;">${err.message}</td></tr>`;
+      }
+    }
+
+    function renderPaginationButtons(pagination) {
+      const controlsEl = document.getElementById('paginationControls');
+      const { page, totalPages } = pagination;
+
+      if (totalPages <= 1) {
+        controlsEl.innerHTML = '';
+        return;
+      }
+
+      let html = '';
+
+      html += `
+        <button class="btn btn-secondary btn-sm" ${page <= 1 ? 'disabled style="opacity: 0.4; cursor: not-allowed;"' : ''} onclick="loadLogs(${page - 1})">
+          ◀ ก่อนหน้า
+        </button>
+      `;
+
+      let startPage = Math.max(1, page - 2);
+      let endPage = Math.min(totalPages, page + 2);
+
+      if (startPage > 1) {
+        html += `<button class="btn btn-secondary btn-sm" onclick="loadLogs(1)">1</button>`;
+        if (startPage > 2) html += `<span style="padding: 0 0.3rem; color: var(--text-muted);">...</span>`;
+      }
+
+      for (let p = startPage; p <= endPage; p++) {
+        const isActive = p === page;
+        html += `
+          <button class="btn btn-sm ${isActive ? 'btn-primary' : 'btn-secondary'}"
+                  style="${isActive ? 'font-weight: 700; pointer-events: none;' : ''}"
+                  onclick="loadLogs(${p})">
+            ${p}
+          </button>
+        `;
+      }
+
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) html += `<span style="padding: 0 0.3rem; color: var(--text-muted);">...</span>`;
+        html += `<button class="btn btn-secondary btn-sm" onclick="loadLogs(${totalPages})">${totalPages}</button>`;
+      }
+
+      html += `
+        <button class="btn btn-secondary btn-sm" ${page >= totalPages ? 'disabled style="opacity: 0.4; cursor: not-allowed;"' : ''} onclick="loadLogs(${page + 1})">
+          ถัดไป ▶
+        </button>
+      `;
+
+      controlsEl.innerHTML = html;
+    }
+
+    function resetFilters() {
+      document.getElementById('logSearch').value = '';
+      document.getElementById('actionFilter').value = '';
+      document.getElementById('resourceFilter').value = '';
+      document.getElementById('startDateFilter').value = '';
+      document.getElementById('endDateFilter').value = '';
+      document.getElementById('startTimeFilter').value = '';
+      document.getElementById('endTimeFilter').value = '';
+      loadLogs(1);
+    }
+
+    function downloadLogsCsv() {
+      const search = document.getElementById('logSearch').value;
+      const action = document.getElementById('actionFilter').value;
+      const resource = document.getElementById('resourceFilter').value;
+      const startDate = formatIsoDate(document.getElementById('startDateFilter').value);
+      const endDate = formatIsoDate(document.getElementById('endDateFilter').value);
+      const startTime = document.getElementById('startTimeFilter').value;
+      const endTime = document.getElementById('endTimeFilter').value;
+
+      const url = `/api/admin/logs/export?search=${encodeURIComponent(search)}` +
+        `&action=${encodeURIComponent(action)}` +
+        `&resource=${encodeURIComponent(resource)}` +
+        `&startDate=${encodeURIComponent(startDate)}` +
+        `&endDate=${encodeURIComponent(endDate)}` +
+        `&startTime=${encodeURIComponent(startTime)}` +
+        `&endTime=${encodeURIComponent(endTime)}`;
+
+      window.location.href = url;
+      showToast('กำลังดาวน์โหลดไฟล์ Audit Log (CSV)...', 'info');
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="จัดการสิทธิ์และการเข้าถึง Role x Permission Matrix (ACL Console)">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💸</text></svg>">
+  <title>จัดการสิทธิ์ Role × Permission (ACL Matrix) | ผู้ดูแลระบบ</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .admin-nav {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.5rem;
+    }
+
+    .admin-tab {
+      padding: 0.5rem 1rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .admin-tab:hover,
+    .admin-tab.active {
+      background: rgba(168, 85, 247, 0.2);
+      color: #c084fc;
+    }
+
+    .acl-checkbox {
+      width: 1.25rem;
+      height: 1.25rem;
+      cursor: pointer;
+      accent-color: var(--primary);
+    }
+  </style>
+</head>
+
+<body>
+
+  <nav class="navbar">
+    <a href="/app" class="brand">💸 Expense<span>Flow</span> <small
+        style="font-size: 0.75rem; color: #c084fc; border: 1px solid #c084fc; padding: 2px 6px; border-radius: 4px;">ADMIN
+        CONSOLE</small></a>
+    <div class="nav-links">
+      <a href="/app" class="nav-link">← กลับสู่หน้าแอปพลิเคชัน</a>
+      <div id="user-profile-badge" class="user-badge"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+    <div class="admin-header">
+      <div>
+        <h2>⚙️ การกำหนดสิทธิ์แบบไดนามิก (Dynamic ACL Management)</h2>
+        <p style="color: var(--text-muted); font-size: 0.85rem;">
+          กำหนดสิทธิ์แบบ Role × Permission Matrix แบบ Real-time ปรับเปลี่ยนแล้วมีผลทันทีโดยไม่ต้องเริ่ม Server ใหม่
+        </p>
+      </div>
+      <div id="matrixActionButtons" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button id="addRoleBtn" class="btn btn-primary btn-sm" onclick="openNewRoleModal()"
+          style="display: none;">➕ เพิ่ม Role ใหม่</button>
+        <button id="addPermBtn" class="btn btn-secondary btn-sm" onclick="openNewPermModal()"
+          style="display: none;">➕ เพิ่ม Permission ใหม่</button>
+      </div>
+    </div>
+
+    <div class="admin-nav">
+      <a href="/admin/acl-matrix" class="admin-tab active">📋 ตาราง ACL Matrix</a>
+      <a href="/admin/users" class="admin-tab">👥 จัดการผู้ใช้งาน</a>
+      <a href="/admin/logs" class="admin-tab">📜 ประวัติ Audit Logs</a>
+    </div>
+
+    <div class="card" style="padding: 0;">
+      <div class="table-responsive">
+        <table id="matrixTable">
+          <thead id="matrixHead">
+            <tr>
+              <th>กำลังโหลดตารางสิทธิ์...</th>
+            </tr>
+          </thead>
+          <tbody id="matrixBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div id="newRoleModal" class="modal-overlay">
+    <div class="modal">
+      <h3>สร้างบทบาทใหม่ (Add New Role)</h3>
+      <form onsubmit="handleCreateRole(event)">
+        <div class="form-group" style="margin-top: 1rem;">
+          <label class="form-label">ชื่อบทบาท (Role Name) *</label>
+          <input type="text" id="roleName" class="form-control" placeholder="เช่น Auditor, Director" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">คำอธิบายหน้าที่</label>
+          <input type="text" id="roleDesc" class="form-control" placeholder="ระบุขอบเขตหน้าที่ความรับผิดชอบ">
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('newRoleModal')">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึก Role</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="newPermModal" class="modal-overlay">
+    <div class="modal">
+      <h3>สร้างสิทธิ์ใหม่ (Add New Permission)</h3>
+      <form onsubmit="handleCreatePermission(event)">
+        <div class="form-group" style="margin-top: 1rem;">
+          <label class="form-label">รหัสสิทธิ์ (Permission Code) *</label>
+          <input type="text" id="permCode" class="form-control" placeholder="เช่น expense.export, report.view" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">ชื่อสิทธิ์ภาษาไทย *</label>
+          <input type="text" id="permName" class="form-control" placeholder="เช่น ส่งออกรายงานเป็น Excel" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">หมวดหมู่โมดูล (Module) *</label>
+          <select id="permModule" class="form-control" required>
+            <option value="EXPENSE">EXPENSE</option>
+            <option value="FILE">FILE</option>
+            <option value="USER">USER</option>
+            <option value="ROLE">ROLE</option>
+            <option value="REPORT">REPORT</option>
+          </select>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('newPermModal')">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึก Permission</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+  <script src="/js/api.js"></script>
+  <script>
+    let currentUser = null;
+    let matrixData = null;
+
+    async function init() {
+      currentUser = await initUserNavbar();
+      if (!currentUser) return;
+
+      const addRoleBtn = document.getElementById('addRoleBtn');
+      const addPermBtn = document.getElementById('addPermBtn');
+      const canManageRole = currentUser.permissions && currentUser.permissions.includes('role.manage');
+      const canManagePerm = currentUser.permissions && currentUser.permissions.includes('permission.manage');
+
+      if (addRoleBtn) addRoleBtn.style.display = canManageRole ? 'inline-flex' : 'none';
+      if (addPermBtn) addPermBtn.style.display = canManagePerm ? 'inline-flex' : 'none';
+
+      await loadMatrix();
+    }
+
+    async function loadMatrix() {
+      try {
+        const res = await api.get('/api/admin/acl-matrix');
+        matrixData = res.data;
+        renderMatrix();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function renderMatrix() {
+      const { roles, permissions, matrix } = matrixData;
+      const head = document.getElementById('matrixHead');
+      const body = document.getElementById('matrixBody');
+
+      const grantedSet = new Set(matrix.map(m => `${m.role_id}_${m.permission_id}`));
+
+      const canManageRole = currentUser && currentUser.permissions && currentUser.permissions.includes('role.manage');
+
+      head.innerHTML = `
+        <tr>
+          <th style="min-width: 200px;">รายการสิทธิ์ (Permissions)</th>
+          <th style="min-width: 100px;">โมดูล</th>
+          ${roles.map(r => `
+            <th style="text-align: center; min-width: 120px;">
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem;">
+                <span>${r.name}</span>
+                ${r.is_system_role
+                  ? '<span style="font-size: 0.7rem; color: #a855f7; background: rgba(168, 85, 247, 0.1); padding: 1px 6px; border-radius: 4px;">System</span>'
+                  : (canManageRole
+                      ? `<button class="btn btn-danger btn-sm" style="padding: 2px 7px; font-size: 0.72rem; border-radius: 6px; line-height: 1.2;" onclick="deleteRole(${r.id}, '${r.name}')" title="ลบบทบาท ${r.name}">🗑️ ลบ</button>`
+                      : '')
+                }
+              </div>
+            </th>
+          `).join('')}
+        </tr>
+      `;
+
+      const canManagePerm = currentUser && currentUser.permissions && currentUser.permissions.includes('permission.manage');
+
+      const systemPermCodes = [
+        'expense.create', 'expense.read_own', 'expense.read_all', 'expense.update_own', 'expense.delete_own',
+        'expense.approve_manager', 'expense.process_finance', 'file.upload_receipt', 'file.upload_slip',
+        'file.view', 'file.delete', 'role.manage', 'permission.manage', 'acl.manage',
+        'user.create', 'user.read', 'user.update', 'user.delete', 'user.suspend', 'log.read'
+      ];
+
+      body.innerHTML = permissions.map(p => {
+        const isSystem = systemPermCodes.includes(p.code);
+        return `
+        <tr>
+          <td>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+              <div>
+                <strong>${p.name}</strong><br>
+                <code style="color: var(--primary); font-size: 0.8rem;">${p.code}</code>
+              </div>
+              ${(!isSystem && canManagePerm) ? `
+                <button class="btn btn-danger btn-sm" style="padding: 2px 7px; font-size: 0.72rem; border-radius: 6px; line-height: 1.2;" onclick="deletePermissionItem(${p.id}, '${p.code}')" title="ลบสิทธิ์นี้">
+                  🗑️ ลบ
+                </button>
+              ` : ''}
+            </div>
+          </td>
+          <td><span class="role-pill role-Employee" style="font-size: 0.7rem;">${p.module}</span></td>
+          ${roles.map(r => {
+          const isGranted = grantedSet.has(`${r.id}_${p.id}`);
+          const isDisabled = r.is_system_role && ['acl.manage', 'role.manage'].includes(p.code);
+          return `
+              <td style="text-align: center;">
+                <input type="checkbox" class="acl-checkbox"
+                  ${isGranted ? 'checked' : ''}
+                  ${isDisabled ? 'disabled' : ''}
+                  onchange="toggleAcl(${r.id}, ${p.id}, this.checked)">
+              </td>
+            `;
+        }).join('')}
+        </tr>
+      `;
+      }).join('');
+    }
+
+    async function toggleAcl(roleId, permId, granted) {
+      try {
+        await api.post('/api/admin/acl-matrix/update', {
+          role_id: roleId,
+          permission_id: permId,
+          granted
+        });
+        showToast('อัปเดตสิทธิ์สำเร็จ (มีผลกับผู้ใช้งานทันที)', 'success');
+        await loadMatrix();
+      } catch (err) {
+        showToast(err.message, 'error');
+        await loadMatrix();
+      }
+    }
+
+    async function deletePermissionItem(id, code) {
+      const ok = await customConfirm({
+        title: 'ยืนยันการลบสิทธิ์ใช้งาน',
+        message: `คุณแน่ใจหรือไม่ว่าต้องการลบสิทธิ์ "${code}" ออกจากระบบ? บทบาททั้งหมดที่มีสิทธิ์นี้จะถูกเพิกถอนทันที`,
+        icon: '🔑',
+        confirmText: 'ลบสิทธิ์',
+        confirmType: 'danger'
+      });
+      if (!ok) return;
+
+      try {
+        await api.delete(`/api/admin/permissions/${id}`);
+        showToast(`ลบสิทธิ์ "${code}" สำเร็จแล้ว`, 'success');
+        await loadMatrix();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function deleteRole(id, name) {
+      const ok = await customConfirm({
+        title: 'ยืนยันการลบบทบาท',
+        message: `คุณแน่ใจหรือไม่ว่าต้องการลบบทบาท "${name}"? หากมีผู้ใช้ผูกอยู่กับบทบาทนี้ ระบบจะไม่อนุญาตให้ลบ`,
+        icon: '🛡️',
+        confirmText: 'ลบบทบาท',
+        confirmType: 'danger'
+      });
+      if (!ok) return;
+
+      try {
+        await api.delete(`/api/admin/roles/${id}`);
+        showToast(`ลบบทบาท ${name} สำเร็จ`, 'success');
+        await loadMatrix();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function openNewRoleModal() {
+      document.getElementById('roleName').value = '';
+      document.getElementById('roleDesc').value = '';
+      document.getElementById('newRoleModal').classList.add('active');
+    }
+
+    function openNewPermModal() {
+      document.getElementById('permCode').value = '';
+      document.getElementById('permName').value = '';
+      document.getElementById('newPermModal').classList.add('active');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    async function handleCreateRole(e) {
+      e.preventDefault();
+      try {
+        await api.post('/api/admin/roles', {
+          name: document.getElementById('roleName').value,
+          description: document.getElementById('roleDesc').value
+        });
+        showToast('เพิ่ม Role สำเร็จ', 'success');
+        closeModal('newRoleModal');
+        await loadMatrix();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function handleCreatePermission(e) {
+      e.preventDefault();
+      try {
+        await api.post('/api/admin/permissions', {
+          code: document.getElementById('permCode').value,
+          name: document.getElementById('permName').value,
+          module: document.getElementById('permModule').value
+        });
+        showToast('เพิ่ม Permission สำเร็จ', 'success');
+        closeModal('newPermModal');
+        await loadMatrix();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    window.onload = init;
+</script>
+</body>
+
+</html>

@@ -1,0 +1,8 @@
+node_modules/
+.env
+uploads/receipts/*
+uploads/slips/*
+!uploads/receipts/.gitkeep
+!uploads/slips/.gitkeep
+.DS_Store
+Thumbs.db

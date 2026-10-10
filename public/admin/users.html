@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="ระบบจัดการผู้ใช้งานและกำหนดบทบาท (User Management Console)">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💸</text></svg>">
+  <title>จัดการผู้ใช้งานระบบ | ผู้ดูแลระบบ</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    
+    .user-table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: 100%;
+    }
+
+    .user-table th {
+      background: var(--table-th-bg);
+      backdrop-filter: blur(12px);
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+      white-space: nowrap;
+    }
+
+    .user-table td {
+      padding: 1.05rem 1.25rem;
+      vertical-align: middle;
+      border-bottom: 1px solid var(--border-color);
+      transition: background 0.2s ease;
+      color: var(--text-main);
+    }
+
+    .user-table tbody tr {
+      transition: all 0.2s ease;
+    }
+
+    .user-table tbody tr:hover {
+      background: var(--table-tr-hover);
+    }
+
+    .user-table tbody tr.row-self {
+      background: rgba(56, 189, 248, 0.04);
+    }
+
+    .user-table tbody tr.row-suspended {
+      opacity: 0.75;
+      background: rgba(239, 68, 68, 0.04);
+    }
+
+    .user-id-badge {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.82rem;
+      background: var(--btn-secondary-bg);
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+
+    .user-avatar-cell {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .user-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: #ffffff;
+      flex-shrink: 0;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .user-primary-name {
+      font-weight: 600;
+      color: var(--text-main);
+      font-size: 0.93rem;
+      line-height: 1.3;
+    }
+
+    .user-meta-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.15rem;
+    }
+
+    .dept-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      color: var(--text-main);
+      font-size: 0.85rem;
+      background: var(--btn-secondary-bg);
+      padding: 0.25rem 0.65rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .status-indicator.active {
+      background: rgba(16, 185, 129, 0.12);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    [data-theme="light"] .status-indicator.active {
+      color: #047857;
+      background: rgba(16, 185, 129, 0.14);
+      border-color: rgba(16, 185, 129, 0.35);
+    }
+
+    .status-indicator.suspended {
+      background: rgba(239, 68, 68, 0.12);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    [data-theme="light"] .status-indicator.suspended {
+      color: #b91c1c;
+      background: rgba(239, 68, 68, 0.14);
+      border-color: rgba(239, 68, 68, 0.35);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .status-indicator.active .status-dot {
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+
+    .status-indicator.suspended .status-dot {
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+    }
+
+    .actions-cluster {
+      display: flex;
+      gap: 0.45rem;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: nowrap;
+    }
+
+    .action-btn {
+      padding: 0.42rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    .action-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    .action-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      filter: grayscale(0.5);
+    }
+
+    .action-btn-role {
+      background: var(--btn-secondary-bg);
+      color: var(--text-main);
+      border-color: var(--border-color);
+    }
+
+    .action-btn-role:hover:not(:disabled) {
+      background: var(--btn-secondary-hover);
+      color: var(--text-main);
+      border-color: var(--border-color);
+    }
+
+    .action-btn-suspend {
+      background: rgba(245, 158, 11, 0.12);
+      color: #fbbf24;
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+    [data-theme="light"] .action-btn-suspend {
+      color: #b45309;
+      background: rgba(245, 158, 11, 0.14);
+      border-color: rgba(245, 158, 11, 0.35);
+    }
+
+    .action-btn-suspend:hover:not(:disabled) {
+      background: #f59e0b;
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);
+    }
+
+    .action-btn-activate {
+      background: rgba(16, 185, 129, 0.12);
+      color: #34d399;
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+    [data-theme="light"] .action-btn-activate {
+      color: #047857;
+      background: rgba(16, 185, 129, 0.14);
+      border-color: rgba(16, 185, 129, 0.35);
+    }
+
+    .action-btn-activate:hover:not(:disabled) {
+      background: #10b981;
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+    }
+
+    .action-btn-delete {
+      background: rgba(239, 68, 68, 0.1);
+      color: #f87171;
+      border-color: rgba(239, 68, 68, 0.25);
+    }
+    [data-theme="light"] .action-btn-delete {
+      color: #b91c1c;
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .action-btn-delete:hover:not(:disabled) {
+      background: #ef4444;
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+    }
+
+    .self-pill {
+      font-size: 0.68rem;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--primary);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-weight: 600;
+      margin-right: 0.4rem;
+      display: inline-flex;
+      align-items: center;
+      vertical-align: middle;
+      line-height: 1;
+    }
+  </style>
+</head>
+
+<body>
+
+  <nav class="navbar">
+    <a href="/app" class="brand">💸 Expense<span>Flow</span> <small
+        style="font-size: 0.75rem; color: #c084fc; border: 1px solid #c084fc; padding: 2px 6px; border-radius: 4px;">ADMIN
+        CONSOLE</small></a>
+    <div class="nav-links">
+      <a href="/app" class="nav-link">← กลับสู่หน้าแอปพลิเคชัน</a>
+      <div id="user-profile-badge" class="user-badge"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+    <div
+      style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <h2>👥 จัดการบัญชีผู้ใช้งาน (User Management)</h2>
+        <p style="color: var(--text-muted); font-size: 0.85rem;">กำหนดบทบาท (Role) เพิ่มผู้ใช้ใหม่ ควบคุมสิทธิ์
+          และระงับ/ปลดระงับการใช้งาน</p>
+      </div>
+      <div>
+        <button id="createUserBtn" class="btn btn-primary" onclick="openCreateUserModal()">➕ เพิ่มผู้ใช้งานใหม่</button>
+      </div>
+    </div>
+
+    <div
+      style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+      <a href="/admin/acl-matrix" class="nav-link">📋 ตาราง ACL Matrix</a>
+      <a href="/admin/users" class="nav-link active" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">👥
+        จัดการผู้ใช้งาน</a>
+      <a href="/admin/logs" class="nav-link">📜 ประวัติ Audit Logs</a>
+    </div>
+
+    <div class="card"
+      style="padding: 0; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 10px 30px rgba(0,0,0,0.35);">
+      <div class="table-responsive">
+        <table class="user-table">
+          <thead>
+            <tr>
+              <th style="width: 70px;">ID</th>
+              <th>ผู้ใช้งาน (User)</th>
+              <th>ชื่อ-นามสกุล / อีเมล</th>
+              <th>แผนก</th>
+              <th>บทบาท (Role)</th>
+              <th style="text-align: center;">สถานะบัญชี</th>
+              <th style="text-align: right; min-width: 280px;">การจัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="userTableBody">
+            <tr>
+              <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2.5rem;">
+                กำลังโหลดข้อมูลผู้ใช้...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div id="editUserModal" class="modal-overlay">
+    <div class="modal">
+      <h3>✏️ แก้ไขบทบาทผู้ใช้ (Change Role)</h3>
+      <form onsubmit="handleSaveUser(event)" style="margin-top: 1rem;">
+        <input type="hidden" id="editUserId">
+        <div class="form-group">
+          <label class="form-label">ชื่อผู้ใช้ (Username)</label>
+          <input type="text" id="editUsername" class="form-control" disabled>
+        </div>
+        <div class="form-group">
+          <label class="form-label">บทบาท (Role) *</label>
+          <select id="editRoleSelect" class="form-control" required></select>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('editUserModal')">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary">บันทึกข้อมูล</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="createUserModal" class="modal-overlay">
+    <div class="modal">
+      <h3>➕ เพิ่มผู้ใช้งานใหม่</h3>
+      <form onsubmit="handleCreateUser(event)" style="margin-top: 1rem;">
+        <div class="form-group">
+          <label class="form-label">ชื่อผู้ใช้ (Username) *</label>
+          <input type="text" id="newUsername" class="form-control" placeholder="เช่น auditor01, manager2" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">รหัสผ่านเริ่มต้น (Password) *</label>
+          <input type="password" id="newPassword" class="form-control" placeholder="••••••••" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">ชื่อ-นามสกุลจริง *</label>
+          <input type="text" id="newFullName" class="form-control" placeholder="เช่น สมเกียรติ ยิ่งเจริญ" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">อีเมล (Email) *</label>
+          <input type="email" id="newEmail" class="form-control" placeholder="example@company.local" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">แผนก (Department)</label>
+          <input type="text" id="newDept" class="form-control" placeholder="เช่น Sales, IT, Accounting">
+        </div>
+        <div class="form-group">
+          <label class="form-label">บทบาท (Role) *</label>
+          <select id="newRoleSelect" class="form-control" required></select>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('createUserModal')">ยกเลิก</button>
+          <button type="submit" id="saveNewUserBtn" class="btn btn-primary">สร้างบัญชีผู้ใช้</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+  <script src="/js/api.js"></script>
+  <script>
+    let currentUser = null;
+    let rolesList = [];
+
+    async function init() {
+      currentUser = await initUserNavbar();
+      if (!currentUser) return;
+
+      const createBtn = document.getElementById('createUserBtn');
+      if (createBtn) {
+        createBtn.style.display = (currentUser.permissions && currentUser.permissions.includes('user.create')) ? 'inline-flex' : 'none';
+      }
+
+      await loadRoles();
+      await loadUsers();
+    }
+
+    async function loadRoles() {
+      const res = await api.get('/api/admin/roles');
+      rolesList = res.data;
+    }
+
+    async function loadUsers() {
+      try {
+        const res = await api.get('/api/admin/users');
+        const users = res.data;
+        const tbody = document.getElementById('userTableBody');
+
+        const canUpdate = currentUser && currentUser.permissions && currentUser.permissions.includes('user.update');
+        const canSuspend = currentUser && currentUser.permissions && currentUser.permissions.includes('user.suspend');
+        const canDelete = currentUser && currentUser.permissions && currentUser.permissions.includes('user.delete');
+
+        tbody.innerHTML = users.map(u => {
+          const isSelf = currentUser && currentUser.id === u.id;
+
+          return `
+          <tr class="${isSelf ? 'row-self' : ''} ${!u.is_active ? 'row-suspended' : ''}">
+            <td>
+              <span class="user-id-badge">#${u.id}</span>
+            </td>
+            <td>
+              <div class="user-primary-name">
+                ${isSelf ? '<span class="self-pill">คุณ</span>' : ''}<span>${u.username}</span>
+              </div>
+              <div class="user-meta-sub">
+                <span style="opacity: 0.7;">ID: ${u.id}</span>
+              </div>
+            </td>
+            <td>
+              <div style="font-weight: 500; color: var(--text-main); font-size: 0.9rem;">${u.full_name}</div>
+              <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">${u.email}</div>
+            </td>
+            <td>
+              <span class="dept-tag">
+                🏢 ${u.department || 'General'}
+              </span>
+            </td>
+            <td>
+              <span class="role-pill role-${u.role_name}">${u.role_name}</span>
+            </td>
+            <td style="text-align: center;">
+              <span class="status-indicator ${u.is_active ? 'active' : 'suspended'}">
+                <span class="status-dot"></span>
+                ${u.is_active ? 'ปกติ (Active)' : 'ระงับการใช้งาน'}
+              </span>
+            </td>
+            <td>
+              <div class="actions-cluster">
+                ${canUpdate ? `
+                  <button class="action-btn action-btn-role" onclick='openEditModal(${JSON.stringify(u)})' title="เปลี่ยน Role ผู้ใช้">
+                    ✏️ เปลี่ยน Role
+                  </button>
+                ` : ''}
+
+                ${canSuspend ? (
+              u.is_active
+                ? `<button class="action-btn action-btn-suspend" onclick='toggleUserStatusItem(${u.id}, "${u.username}", true)' title="ระงับการใช้งานชั่วคราว" ${isSelf ? 'disabled' : ''}>
+                        ⏸️ ระงับ
+                      </button>`
+                : `<button class="action-btn action-btn-activate" onclick='toggleUserStatusItem(${u.id}, "${u.username}", false)' title="ปลดระงับการใช้งาน">
+                        ▶️ ปลดระงับ
+                      </button>`
+            ) : ''}
+
+                ${canDelete ? `
+                  <button class="action-btn action-btn-delete" onclick='deleteUserItem(${u.id}, "${u.username}")' title="ลบผู้ใช้งานนี้" ${isSelf ? 'disabled' : ''}>
+                    🗑️ ลบ
+                  </button>
+                ` : ''}
+
+                ${(!canUpdate && !canSuspend && !canDelete) ? `<span style="color: var(--text-muted); font-size: 0.8rem;">-</span>` : ''}
+              </div>
+            </td>
+          </tr>
+        `;
+        }).join('');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function toggleUserStatusItem(id, username, currentlyActive) {
+      const actionName = currentlyActive ? 'ระงับการใช้งาน' : 'ปลดระงับการใช้งาน';
+      const ok = await customConfirm({
+        title: `ยืนยันการ${actionName}`,
+        message: currentlyActive
+          ? `คุณต้องการระงับการใช้งานบัญชี "${username}" ชั่วคราวหรือไม่? ผู้ใช้รายนี้จะไม่สามารถเข้าสู่ระบบได้จนกว่าจะปลดระงับ`
+          : `คุณต้องการปลดระงับและเปิดใช้งานบัญชี "${username}" ให้กลับมาใช้งานได้ตามปกติหรือไม่?`,
+        icon: currentlyActive ? '⏸️' : '▶️',
+        confirmText: actionName,
+        confirmType: currentlyActive ? 'danger' : 'success'
+      });
+      if (!ok) return;
+
+      try {
+        const res = await api.put(`/api/admin/users/${id}/status`, {});
+        showToast(res.message || `${actionName}สำเร็จ`, 'success');
+        await loadUsers();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function deleteUserItem(id, username) {
+      const ok = await customConfirm({
+        title: 'ยืนยันการลบบัญชีผู้ใช้',
+        message: `คุณแน่ใจหรือไม่ว่าต้องการลบบัญชีผู้ใช้ "${username}" ออกจากระบบ? การกระทำนี้ไม่สามารถย้อนกลับได้`,
+        icon: '👤',
+        confirmText: 'ลบบัญชีผู้ใช้',
+        confirmType: 'danger'
+      });
+      if (!ok) return;
+
+      try {
+        const res = await api.delete(`/api/admin/users/${id}`);
+        showToast(res.message || 'ลบผู้ใช้งานสำเร็จ', 'success');
+        await loadUsers();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function openCreateUserModal() {
+      document.getElementById('newUsername').value = '';
+      document.getElementById('newPassword').value = '';
+      document.getElementById('newFullName').value = '';
+      document.getElementById('newEmail').value = '';
+      document.getElementById('newDept').value = '';
+
+      const select = document.getElementById('newRoleSelect');
+      select.innerHTML = rolesList.map(r => `
+        <option value="${r.id}">${r.name} (${r.description || '-'})</option>
+      `).join('');
+
+      document.getElementById('createUserModal').classList.add('active');
+    }
+
+    async function handleCreateUser(e) {
+      e.preventDefault();
+      const saveBtn = document.getElementById('saveNewUserBtn');
+      saveBtn.disabled = true;
+      saveBtn.innerText = 'กำลังสร้าง...';
+
+      const payload = {
+        username: document.getElementById('newUsername').value.trim(),
+        password: document.getElementById('newPassword').value,
+        full_name: document.getElementById('newFullName').value.trim(),
+        email: document.getElementById('newEmail').value.trim(),
+        department: document.getElementById('newDept').value.trim(),
+        role_id: parseInt(document.getElementById('newRoleSelect').value, 10)
+      };
+
+      try {
+        await api.post('/api/admin/users', payload);
+        showToast(`สร้างผู้ใช้ ${payload.username} เรียบร้อยแล้ว`, 'success');
+        closeModal('createUserModal');
+        await loadUsers();
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerText = 'สร้างบัญชีผู้ใช้';
+      }
+    }
+
+    function openEditModal(user) {
+      document.getElementById('editUserId').value = user.id;
+      document.getElementById('editUsername').value = user.username;
+
+      const roleSelect = document.getElementById('editRoleSelect');
+      roleSelect.innerHTML = rolesList.map(r => `
+        <option value="${r.id}" ${r.id === user.role_id ? 'selected' : ''}>${r.name}</option>
+      `).join('');
+
+      document.getElementById('editUserModal').classList.add('active');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    async function handleSaveUser(e) {
+      e.preventDefault();
+      const id = document.getElementById('editUserId').value;
+      const role_id = parseInt(document.getElementById('editRoleSelect').value, 10);
+
+      try {
+        await api.put(`/api/admin/users/${id}`, { role_id });
+        showToast('แก้ไขข้อมูลบทบาทผู้ใช้เรียบร้อย', 'success');
+        closeModal('editUserModal');
+        await loadUsers();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    window.onload = init;
+</script>
+</body>
+
+</html>

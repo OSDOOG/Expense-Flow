@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="รายการคำขอเบิกจ่ายค่าใช้จ่าย ติดตามสถานะ อนุมัติคำขอ และบันทึกการจ่ายเงิน">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💸</text></svg>">
+  <title>รายการคำขอเบิกจ่าย | Expense Reimbursement</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .filters {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .bank-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 0.5rem;
+      margin-top: 0.4rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .bank-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.55rem 0.75rem;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1.5px solid rgba(255, 255, 255, 0.08);
+      color: #cbd5e1;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      user-select: none;
+    }
+
+    .bank-pill:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .bank-pill.selected {
+      background: rgba(56, 189, 248, 0.12);
+      border-color: #38bdf8;
+      color: #ffffff;
+      box-shadow: 0 0 14px rgba(56, 189, 248, 0.3);
+      font-weight: 600;
+    }
+
+    .bank-badge-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      box-shadow: 0 0 6px currentColor;
+    }
+
+    .bank-info-card {
+      background: rgba(56, 189, 248, 0.06);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      margin-top: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    [data-theme="light"] .bank-info-card {
+      background: #f0f9ff;
+      border-color: #bae6fd;
+    }
+
+    [data-theme="light"] .bank-info-card span[id="modalBankName"] {
+      color: #0f172a !important;
+    }
+
+    [data-theme="light"] .detail-section-box {
+      background: #f8fafc !important;
+      border: 1px solid #e2e8f0 !important;
+    }
+
+    .expense-logs-box {
+      max-height: 180px;
+      overflow-y: auto;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-size: 0.82rem;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    [data-theme="light"] .expense-logs-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #0f172a;
+    }
+
+    .log-item-row {
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.4rem 0;
+      line-height: 1.5;
+    }
+
+    .log-item-row:last-child {
+      border-bottom: none;
+    }
+
+    .log-action-tag {
+      font-weight: 700;
+      font-size: 0.75rem;
+      padding: 0.1rem 0.45rem;
+      border-radius: 4px;
+      display: inline-block;
+      margin: 0 0.2rem;
+      background: rgba(168, 85, 247, 0.15);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+
+    [data-theme="light"] .log-action-tag {
+      background: #f3e8ff;
+      color: #7e22ce;
+      border-color: #d8b4fe;
+    }
+  </style>
+</head>
+
+<body>
+
+  <nav class="navbar">
+    <a href="/app" class="brand">💸 Expense<span>Flow</span></a>
+    <div class="nav-links">
+      <a href="/app" class="nav-link active">รายการเบิกจ่าย</a>
+      <a href="/admin" id="admin-nav-item" class="nav-link admin-badge" style="display: none;">⚙️ แผงควบคุม Admin</a>
+      <div id="user-profile-badge" class="user-badge"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+    <div class="toolbar">
+      <div>
+        <h2 style="font-size: 1.4rem;">รายการคำขอเบิกจ่ายค่าใช้จ่าย</h2>
+        <p style="color: var(--text-muted); font-size: 0.85rem;">ติดตามสถานะ ตรวจสอบ และดำเนินการตามขั้นตอนงาน</p>
+      </div>
+      <div style="display: flex; gap: 0.6rem; align-items: center;">
+        <button id="deleteAllBtn" class="btn btn-danger" onclick="handleDeleteAllExpenses()" style="display: none;">
+          🗑️ ลบคำขอทั้งหมด
+        </button>
+        <button id="createBtn" class="btn btn-primary" onclick="openCreateModal()" style="display: none;">
+          ➕ ยื่นคำขอเบิกเงินใหม่
+        </button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">⏳</div>
+        <div class="stat-info">
+          <span class="stat-label">รอพิจารณา</span>
+          <span class="stat-value" id="statPending" style="color: #fbbf24;">-</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">📋</div>
+        <div class="stat-info">
+          <span class="stat-label">อนุมัติแล้ว/รอจ่าย</span>
+          <span class="stat-value" id="statApproved" style="color: #38bdf8;">-</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">✅</div>
+        <div class="stat-info">
+          <span class="stat-label">จ่ายเงินเรียบร้อย</span>
+          <span class="stat-value" id="statPaid" style="color: #34d399;">-</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background: rgba(168, 85, 247, 0.15); color: #c084fc;">💰</div>
+        <div class="stat-info">
+          <span class="stat-label">ยอดเบิกรวมทั้งหมด</span>
+          <span class="stat-value" id="statTotalAmount" style="color: var(--text-main); font-size: 1.3rem;">-</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="padding: 1.1rem 1.6rem; margin-bottom: 1.25rem;">
+      <div class="filters">
+        <input type="text" id="searchInput" class="form-control" placeholder="ค้นหา รหัสคำขอ หรือ หัวข้อ..."
+          style="max-width: 260px;" oninput="loadExpenses()">
+        <select id="statusFilter" class="form-control" style="max-width: 180px;" onchange="loadExpenses()">
+          <option value="">ทุกสถานะ</option>
+          <option value="PENDING_MANAGER">รอพิจารณา</option>
+          <option value="APPROVED_MANAGER">อนุมัติแล้ว/รอจ่ายเงิน</option>
+          <option value="PAID">จ่ายเงินเรียบร้อย</option>
+          <option value="REJECTED">ไม่อนุมัติ</option>
+        </select>
+        <button id="refreshBtn" class="btn btn-secondary btn-sm" onclick="handleRefreshExpenses()">🔄 รีเฟรช</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding: 0;">
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>รหัสคำขอ</th>
+              <th>ผู้ยื่นคำขอ</th>
+              <th>หัวข้อการเบิก</th>
+              <th>หมวดหมู่</th>
+              <th>ยอดเงิน</th>
+              <th>สถานะ</th>
+              <th>เอกสารแนบ</th>
+              <th>การกระทำ</th>
+            </tr>
+          </thead>
+          <tbody id="expenseTableBody">
+            <tr>
+              <td colspan="8" style="text-align: center; color: var(--text-muted);">กำลังโหลดข้อมูล...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div id="createModal" class="modal-overlay">
+    <div class="modal">
+      <h3 style="margin-bottom: 1.25rem;">ยื่นคำขอเบิกจ่ายค่าใช้จ่ายใหม่</h3>
+      <form id="createForm" onsubmit="handleCreateExpense(event)">
+        <div class="form-group">
+          <label class="form-label">หัวข้อการเบิก (Title) *</label>
+          <input type="text" id="newTitle" class="form-control" placeholder="เช่น ค่าที่พักและตั๋วรถไฟโครงการ A"
+            required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">หมวดหมู่ค่าใช้จ่าย *</label>
+          <select id="newCategory" class="form-control" required>
+            <option value="Travel">การเดินทาง (Travel)</option>
+            <option value="Equipment">อุปกรณ์/ครุภัณฑ์ (Equipment)</option>
+            <option value="Meals">ค่าอาหารรับรอง (Meals)</option>
+            <option value="Accommodation">ค่าที่พัก (Accommodation)</option>
+            <option value="Other">อื่น ๆ (Other)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">จำนวนเงินที่ต้องการเบิก (บาท) *</label>
+          <input type="number" step="0.01" min="1" id="newAmount" class="form-control" placeholder="0.00" required>
+        </div>
+
+        <div class="form-group" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 1rem;">
+          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+            <span>🏦 เลือกธนาคารรับเงินโอน *</span>
+            <span id="newBankSelectedText" style="color: var(--primary); font-size: 0.8rem; font-weight: 600;">ยังไม่ได้เลือก</span>
+          </label>
+          <input type="hidden" id="newBankName" required>
+          <div class="bank-grid" id="newBankGrid">
+            
+          </div>
+
+          <label class="form-label" style="margin-top: 0.85rem;">เลขที่บัญชีธนาคาร (Bank Account No.) *</label>
+          <input type="text" id="newBankAccountNo" class="form-control" placeholder="กรุณาเลือกธนาคารก่อน" maxlength="18" oninput="formatBankAccountInput(this, 'newBankName')" required>
+          <small id="newBankHelpText" style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.35rem;">
+            * โปรดเลือกธนาคารด้านบนเพื่อกำหนดรูปแบบและจำนวนหลักเลขบัญชี
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">รายละเอียด / เหตุผลความจำเป็น</label>
+          <textarea id="newDescription" class="form-control" rows="3"
+            placeholder="ระบุเหตุผลและรายละเอียดค่าใช้จ่าย"></textarea>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('createModal')">ยกเลิก</button>
+          <button type="submit" id="saveCreateBtn" class="btn btn-primary">ส่งคำขอ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="detailModal" class="modal-overlay">
+    <div class="modal" style="max-width: 650px;">
+      <h3 id="modalTitle" style="margin-bottom: 0.5rem;">รายละเอียดคำขอเบิกจ่าย</h3>
+      <div id="modalSubInfo" style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.25rem;"></div>
+
+      <div class="detail-section-box" style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; margin-bottom: 1.25rem;">
+        <p><strong>รายละเอียด:</strong> <span id="modalDesc">-</span></p>
+        <p style="margin-top: 0.5rem;"><strong>ยอดเงิน:</strong> <span id="modalAmount"
+            style="color: var(--primary); font-weight: 700; font-size: 1.1rem;">-</span></p>
+        <p style="margin-top: 0.5rem;"><strong>สถานะปัจจุบัน:</strong> <span id="modalStatusBadge"></span></p>
+
+        <div id="modalBankCard" class="bank-info-card">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span id="modalBankDot" class="bank-badge-dot" style="background: #38bdf8;"></span>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">ข้อมูลโอนเงินเข้าบัญชี</div>
+              <div style="font-weight: 600; font-size: 0.95rem; color: #fff;">
+                <span id="modalBankName">-</span>
+              </div>
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 0.75rem; color: var(--text-muted);">เลขที่บัญชี</div>
+            <div id="modalBankAccountNo" style="font-family: monospace; font-size: 1.05rem; font-weight: 700; color: #38bdf8; letter-spacing: 0.5px;">-</div>
+          </div>
+        </div>
+
+        <div id="approvalInfo"
+          style="margin-top: 0.75rem; font-size: 0.85rem; border-top: 1px dashed var(--border-color); padding-top: 0.5rem;">
+        </div>
+        <div id="editActionBox" style="margin-top: 0.75rem; display: none;">
+          <button class="btn btn-secondary btn-sm" onclick="openEditExpenseModal()">✏️ แก้ไขรายละเอียดคำขอนี้</button>
+        </div>
+      </div>
+
+      <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem;">📁 เอกสารและไฟล์แนบ (Protected Stream)</h4>
+      <div id="attachmentList" style="margin-bottom: 1.25rem;"></div>
+
+      <div id="uploadSection" class="detail-section-box"
+        style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px; margin-bottom: 1.25rem;">
+        <h5 style="font-size: 0.85rem; margin-bottom: 0.5rem;" id="uploadTitle">แนบไฟล์เพิ่มเติม (PDF, JPG, PNG
+          ขนาดไม่เกิน 5MB)</h5>
+        <form id="uploadForm" onsubmit="handleUploadFile(event)" style="display: flex; gap: 0.5rem;">
+          <input type="hidden" id="uploadRequestId">
+          <input type="hidden" id="uploadFileType" value="RECEIPT">
+          <input type="file" id="fileInput" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required
+            style="padding: 0.4rem;">
+          <button type="submit" id="uploadBtn" class="btn btn-secondary btn-sm">อัปโหลด</button>
+        </form>
+      </div>
+
+      <div id="expenseLogsSection" style="display: none; margin-bottom: 1.25rem;">
+        <h4
+          style="font-size: 0.95rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+          <span>📜 ประวัติการแก้ไขและการดำเนินการ (Audit Logs)</span>
+        </h4>
+        <div id="expenseLogsList" class="expense-logs-box">
+          <div style="color: var(--text-muted);">กำลังโหลดประวัติ...</div>
+        </div>
+      </div>
+
+      <div id="actionControls" style="display: none; border-top: 1px solid var(--border-color); padding-top: 1.25rem;">
+        
+        <div id="managerControls" style="display: none;">
+          <label class="form-label">ความเห็นหัวหน้างาน (Comment)</label>
+          <input type="text" id="managerComment" class="form-control" placeholder="ระบุเหตุผลการอนุมัติหรือไม่อนุมัติ"
+            style="margin-bottom: 0.75rem;">
+          <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+            <button class="btn btn-danger btn-sm" onclick="submitManagerAction('REJECT')">❌ ไม่อนุมัติ (Reject)</button>
+            <button class="btn btn-success btn-sm" onclick="submitManagerAction('APPROVE')">✔️ อนุมัติคำขอ
+              (Approve)</button>
+          </div>
+        </div>
+
+        <div id="managerRevokeControls"
+          style="display: none; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 0.85rem; margin-top: 0.5rem;">
+          <label class="form-label" style="color: #fca5a5; font-weight: 600;">⚠️ ยกเลิกการอนุมัติคำขอ (Revoke
+            Approval)</label>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">หากพบข้อผิดพลาด
+            สามารถดึงคำขอกลับสู่สถานะ "รอพิจารณา" ได้ ก่อนที่ฝ่ายการเงินจะดำเนินการจ่ายเงิน</p>
+          <input type="text" id="managerRevokeComment" class="form-control"
+            placeholder="ระบุเหตุผลในการยกเลิกการอนุมัติ (จำเป็นต้องระบุ)" style="margin-bottom: 0.75rem;">
+          <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+            <button class="btn btn-danger btn-sm" onclick="submitManagerRevokeApproval()">↩️ ยกเลิกการอนุมัติ</button>
+          </div>
+        </div>
+
+        <div id="financeControls" style="display: none;">
+          <label class="form-label">บันทึกฝ่ายการเงิน (Payment Note / Reference)</label>
+          <input type="text" id="financeComment" class="form-control"
+            placeholder="เช่น โอนเงินผ่าน ธ.กสิกร เลขที่อ้างอิง KBANK-XXXX" style="margin-bottom: 0.75rem;">
+          <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+            <button class="btn btn-success btn-sm" onclick="submitFinancePayout()">💰 บันทึกจ่ายเงินเสร็จสิ้น
+              (Paid)</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align: right; margin-top: 1.25rem;">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('detailModal')">ปิดหน้าต่าง</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="editExpenseModal" class="modal-overlay">
+    <div class="modal">
+      <h3 style="margin-bottom: 1.25rem;">แก้ไขคำขอเบิกจ่ายค่าใช้จ่าย</h3>
+      <form id="editExpenseForm" onsubmit="handleUpdateExpense(event)">
+        <input type="hidden" id="editExpenseId">
+        <div class="form-group">
+          <label class="form-label">หัวข้อการเบิก (Title) *</label>
+          <input type="text" id="editTitle" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">หมวดหมู่ค่าใช้จ่าย *</label>
+          <select id="editCategory" class="form-control" required>
+            <option value="Travel">การเดินทาง (Travel)</option>
+            <option value="Equipment">อุปกรณ์/ครุภัณฑ์ (Equipment)</option>
+            <option value="Meals">ค่าอาหารรับรอง (Meals)</option>
+            <option value="Accommodation">ค่าที่พัก (Accommodation)</option>
+            <option value="Other">อื่น ๆ (Other)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">จำนวนเงินที่ต้องการเบิก (บาท) *</label>
+          <input type="number" step="0.01" min="1" id="editAmount" class="form-control" required>
+        </div>
+
+        <div class="form-group" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 1rem;">
+          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+            <span>🏦 เลือกธนาคารรับเงินโอน *</span>
+            <span id="editBankSelectedText" style="color: var(--primary); font-size: 0.8rem; font-weight: 600;">ยังไม่ได้เลือก</span>
+          </label>
+          <input type="hidden" id="editBankName" required>
+          <div class="bank-grid" id="editBankGrid">
+            
+          </div>
+
+          <label class="form-label" style="margin-top: 0.85rem;">เลขที่บัญชีธนาคาร (Bank Account No.) *</label>
+          <input type="text" id="editBankAccountNo" class="form-control" placeholder="กรุณาเลือกธนาคารก่อน" maxlength="18" oninput="formatBankAccountInput(this, 'editBankName')" required>
+          <small id="editBankHelpText" style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.35rem;">
+            * โปรดเลือกธนาคารด้านบนเพื่อกำหนดรูปแบบและจำนวนหลักเลขบัญชี
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">รายละเอียด / เหตุผลความจำเป็น</label>
+          <textarea id="editDescription" class="form-control" rows="3"></textarea>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('editExpenseModal')">ยกเลิก</button>
+          <button type="submit" id="saveEditBtn" class="btn btn-primary">บันทึกการแก้ไข</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+  <script src="/js/api.js"></script>
+  <script>
+    let currentUser = null;
+    let currentExpense = null;
+
+    async function init() {
+      currentUser = await initUserNavbar();
+      if (!currentUser) return;
+
+      const isAdmin = currentUser.role_name && currentUser.role_name.toLowerCase() === 'admin';
+      if (isAdmin) {
+        const delAllBtn = document.getElementById('deleteAllBtn');
+        if (delAllBtn) delAllBtn.style.display = 'inline-flex';
+      }
+
+      if (currentUser.permissions && currentUser.permissions.includes('expense.create')) {
+        document.getElementById('createBtn').style.display = 'inline-flex';
+      }
+
+      await loadExpenses();
+    }
+
+    let isRefreshing = false;
+    async function handleRefreshExpenses() {
+      if (isRefreshing) return;
+      isRefreshing = true;
+      const btn = document.getElementById('refreshBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ กำลังโหลด...';
+      }
+
+      await loadExpenses();
+
+      let cooldown = 3;
+      const timer = setInterval(() => {
+        cooldown--;
+        if (cooldown > 0 && btn) {
+          btn.innerHTML = `⏳ รอ (${cooldown}s)`;
+        } else {
+          clearInterval(timer);
+          isRefreshing = false;
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🔄 รีเฟรช';
+          }
+        }
+      }, 1000);
+    }
+
+    async function loadExpenses() {
+      const search = document.getElementById('searchInput').value;
+      const status = document.getElementById('statusFilter').value;
+      const tbody = document.getElementById('expenseTableBody');
+
+      let url = `/api/expenses?search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}`;
+      try {
+        const res = await api.get(url);
+        const list = res.data;
+
+        const pendingCount = list.filter(x => x.status === 'PENDING_MANAGER').length;
+        const approvedCount = list.filter(x => x.status === 'APPROVED_MANAGER').length;
+        const paidCount = list.filter(x => x.status === 'PAID').length;
+        const totalSum = list.reduce((sum, x) => sum + parseFloat(x.total_amount || 0), 0);
+
+        document.getElementById('statPending').textContent = pendingCount;
+        document.getElementById('statApproved').textContent = approvedCount;
+        document.getElementById('statPaid').textContent = paidCount;
+        document.getElementById('statTotalAmount').textContent = formatMoney(totalSum);
+
+        if (list.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2.5rem;">🔍 ไม่พบข้อมูลคำขอเบิกจ่ายในเงื่อนไขนี้</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = list.map(item => {
+          const isAdmin = currentUser && currentUser.role_name.toLowerCase() === 'admin';
+          const hasDeleteExpPerm = currentUser && currentUser.permissions && currentUser.permissions.includes('expense.delete_own');
+          const isOwnerCanDelete = hasDeleteExpPerm && currentUser.id === item.user_id && ['PENDING_MANAGER', 'REJECTED'].includes(item.status);
+
+          return `
+            <tr>
+              <td><strong>${item.request_no}</strong></td>
+              <td>${item.requester_name} <br><small style="color: var(--text-muted);">${item.requester_dept}</small></td>
+              <td>${item.title}</td>
+              <td><span class="role-pill role-Manager" style="font-size: 0.7rem;">${item.category}</span></td>
+              <td><strong>${formatMoney(item.total_amount)}</strong></td>
+              <td><span class="badge badge-${item.status}">${translateStatus(item.status)}</span></td>
+              <td>📎 ${item.attachment_count} ไฟล์</td>
+              <td>
+                <div style="display: flex; gap: 0.4rem;">
+                  <button class="btn btn-secondary btn-sm" onclick="viewExpenseDetail(${item.id})">🔍 ดู</button>
+                  ${(isAdmin || isOwnerCanDelete) ? `
+                    <button class="btn btn-danger btn-sm" onclick="deleteExpenseItem(${item.id}, '${item.request_no}')">🗑️ ลบ</button>
+                  ` : ''}
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--danger); padding: 2rem;">${err.message}</td></tr>`;
+      }
+    }
+
+    async function deleteExpenseItem(id, reqNo) {
+      const ok = await customConfirm({
+        title: 'ยืนยันการลบคำขอเบิกเงิน',
+        message: `คุณแน่ใจหรือไม่ว่าต้องการลบคำขอเบิกจ่าย "${reqNo}" ออกจากระบบ? การกระทำนี้ไม่สามารถย้อนกลับได้`,
+        icon: '🗑️',
+        confirmText: 'ลบคำขอ',
+        confirmType: 'danger'
+      });
+      if (!ok) return;
+
+      try {
+        await api.delete(`/api/expenses/${id}`);
+        showToast(`ลบคำขอ ${reqNo} เรียบร้อยแล้ว`, 'success');
+        await loadExpenses();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function handleDeleteAllExpenses() {
+      const ok = await customConfirm({
+        title: '⚠️ ยืนยันการลบคำขอทั้งหมด (Admin)',
+        message: 'คุณแน่ใจหรือไม่ว่าต้องการล้างลบคำขอเบิกจ่ายและเอกสารแนบ "ทั้งหมดในระบบ"? ข้อมูลทั้งหมดจะถูกลบถาวรและไม่สามารถกู้คืนได้!',
+        icon: '🚨',
+        confirmText: 'ยืนยันลบทั้งหมด',
+        confirmType: 'danger'
+      });
+      if (!ok) return;
+
+      const btn = document.getElementById('deleteAllBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ กำลังลบ...';
+      }
+
+      try {
+        const res = await api.delete('/api/expenses/all/clear');
+        showToast(res.message || 'ลบคำขอทั้งหมดเรียบร้อยแล้ว', 'success');
+        await loadExpenses();
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '🗑️ ลบคำขอทั้งหมด';
+        }
+      }
+    }
+
+    function translateStatus(st) {
+      switch (st) {
+        case 'PENDING_MANAGER': return 'รอพิจารณา';
+        case 'APPROVED_MANAGER': return 'อนุมัติแล้ว/รอจ่ายเงิน';
+        case 'PAID': return 'จ่ายเงินแล้ว';
+        case 'REJECTED': return 'ไม่อนุมัติ';
+        default: return st;
+      }
+    }
+
+    const THAI_BANKS = [
+      { code: 'BBL', name: 'ธนาคารกรุงเทพ (BBL)', color: '#1e3f8a', digits: 10, placeholder: 'xxx-x-xxxxx-x', format: [3, 1, 5, 1] },
+      { code: 'KBANK', name: 'กสิกรไทย (KBANK)', color: '#138f2d', digits: 10, placeholder: 'xxx-x-xxxxx-x', format: [3, 1, 5, 1] },
+      { code: 'SCB', name: 'ไทยพาณิชย์ (SCB)', color: '#4e2e7f', digits: 10, placeholder: 'xxx-x-xxxxx-x', format: [3, 1, 5, 1] },
+      { code: 'KTB', name: 'กรุงไทย (KTB)', color: '#00a5e5', digits: 10, placeholder: 'xxx-x-xxxxx-x', format: [3, 1, 5, 1] },
+      { code: 'BAY', name: 'กรุงศรีอยุธยา (BAY)', color: '#fec43b', digits: 10, placeholder: 'xxx-x-xxxxx-x', format: [3, 1, 5, 1] },
+      { code: 'TTB', name: 'ทหารไทยธนชาต (TTB)', color: '#002d63', digits: 10, placeholder: 'xxx-x-xxxxx-x', format: [3, 1, 5, 1] },
+      { code: 'UOB', name: 'ยูโอบี (UOB)', color: '#002d62', digits: 10, placeholder: 'xxx-x-xxxxx-x', format: [3, 1, 5, 1] },
+      { code: 'CIMBT', name: 'ซีไอเอ็มบีไทย (CIMBT)', color: '#7e171b', digits: 10, placeholder: 'xxx-x-xxxxx-x', format: [3, 1, 5, 1] },
+      { code: 'GSB', name: 'ออมสิน (GSB)', color: '#eb1985', digits: 12, placeholder: 'xxxx-xxxx-xxxx', format: [4, 4, 4] },
+      { code: 'BAAC', name: 'ธ.ก.ส. (BAAC)', color: '#1b5e20', digits: 12, placeholder: 'xxxx-xxxx-xxxx', format: [4, 4, 4] },
+      { code: 'GHB', name: 'อาคารสงเคราะห์ (ธอส. / GHB)', color: '#ff6f00', digits: 12, placeholder: 'xxxx-xxxx-xxxx', format: [4, 4, 4] },
+      { code: 'TISCO', name: 'ทิสโก้ (TISCO)', color: '#005ba1', digits: 14, placeholder: 'xxxx-xxxx-xxxx-xx', format: [4, 4, 4, 2] },
+      { code: 'PROMPTPAY', name: 'พร้อมเพย์ (PromptPay)', color: '#005f86', digits: 13, placeholder: 'เบอร์มือถือ (10 หลัก) หรือ บัตร ปชช. (13 หลัก)', format: null }
+    ];
+
+    function getBankConfig(bankName) {
+      if (!bankName) return null;
+      return THAI_BANKS.find(b => bankName.includes(b.code) || bankName.includes(b.name) || b.name.includes(bankName)) || null;
+    }
+
+    function renderBankGrid(gridId, hiddenInputId, labelId, selectedBankName = '') {
+      const container = document.getElementById(gridId);
+      const hiddenInput = document.getElementById(hiddenInputId);
+      const label = document.getElementById(labelId);
+      if (!container) return;
+
+      hiddenInput.value = selectedBankName || '';
+      if (label) {
+        label.textContent = selectedBankName ? selectedBankName : 'ยังไม่ได้เลือก';
+        label.style.color = selectedBankName ? '#38bdf8' : 'var(--text-muted)';
+      }
+
+      container.innerHTML = THAI_BANKS.map(b => {
+        const isSelected = selectedBankName && (selectedBankName === b.name || selectedBankName.includes(b.code) || selectedBankName.includes(b.name));
+        return `
+          <button type="button" class="bank-pill ${isSelected ? 'selected' : ''}" onclick="selectBankOption('${gridId}', '${hiddenInputId}', '${labelId}', '${b.name}')">
+            <span class="bank-badge-dot" style="background: ${b.color};"></span>
+            <span>${b.name}</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function selectBankOption(gridId, hiddenInputId, labelId, bankName) {
+      const hiddenInput = document.getElementById(hiddenInputId);
+      const label = document.getElementById(labelId);
+      const container = document.getElementById(gridId);
+
+      hiddenInput.value = bankName;
+      if (label) {
+        label.textContent = bankName;
+        label.style.color = '#38bdf8';
+      }
+
+      if (container) {
+        const pills = container.querySelectorAll('.bank-pill');
+        pills.forEach(p => {
+          if (p.textContent.trim().includes(bankName) || bankName.includes(p.textContent.trim())) {
+            p.classList.add('selected');
+          } else {
+            p.classList.remove('selected');
+          }
+        });
+      }
+
+      const isCreate = gridId === 'newBankGrid';
+      const inputId = isCreate ? 'newBankAccountNo' : 'editBankAccountNo';
+      const helpId = isCreate ? 'newBankHelpText' : 'editBankHelpText';
+      const inputEl = document.getElementById(inputId);
+      const helpEl = document.getElementById(helpId);
+      const bankCfg = getBankConfig(bankName);
+
+      if (inputEl && bankCfg) {
+        inputEl.placeholder = bankCfg.placeholder;
+        if (bankCfg.digits === 10) {
+          inputEl.maxLength = 13;
+        } else if (bankCfg.digits === 12) {
+          inputEl.maxLength = 14;
+        } else if (bankCfg.digits === 14) {
+          inputEl.maxLength = 17;
+        } else {
+          inputEl.maxLength = 18;
+        }
+
+        if (inputEl.value) {
+          formatBankAccountInput(inputEl, hiddenInputId);
+        }
+      }
+
+      if (helpEl && bankCfg) {
+        let helpMsg = '';
+        if (bankCfg.digits === 10) {
+          helpMsg = `💡 กำหนดเลขบัญชี 10 หลัก (${bankCfg.placeholder})`;
+        } else if (bankCfg.digits === 12) {
+          helpMsg = `💡 กำหนดเลขบัญชี 12 หลัก (${bankCfg.placeholder})`;
+        } else if (bankCfg.digits === 14) {
+          helpMsg = `💡 กำหนดเลขบัญชี 14 หลัก (${bankCfg.placeholder})`;
+        } else {
+          helpMsg = `💡 เบอร์โทรศัพท์ 10 หลัก หรือ บัตรประชาชน 13 หลัก`;
+        }
+        helpEl.innerHTML = `<span style="color: #38bdf8; font-weight: 600;">${helpMsg}</span>`;
+      }
+    }
+
+    function formatBankAccount(val, bankName = '') {
+      if (!val) return '-';
+      const clean = val.replace(/\D/g, '');
+      if (!clean) return val;
+
+      const bankCfg = getBankConfig(bankName);
+      const digits = bankCfg ? bankCfg.digits : clean.length;
+
+      if (digits === 10 || (clean.length === 10 && !bankCfg)) {
+        return `${clean.slice(0, 3)}-${clean.slice(3, 4)}-${clean.slice(4, 9)}${clean.length >= 10 ? '-' + clean.slice(9, 10) : ''}`;
+      }
+
+      if (digits === 12 || (clean.length === 12 && !bankCfg)) {
+        let res = clean.slice(0, 4);
+        if (clean.length > 4) res += '-' + clean.slice(4, 8);
+        if (clean.length > 8) res += '-' + clean.slice(8, 12);
+        return res;
+      }
+
+      if (digits === 14 || (clean.length === 14 && !bankCfg)) {
+        let res = clean.slice(0, 4);
+        if (clean.length > 4) res += '-' + clean.slice(4, 8);
+        if (clean.length > 8) res += '-' + clean.slice(8, 12);
+        if (clean.length > 12) res += '-' + clean.slice(12, 14);
+        return res;
+      }
+
+      if (clean.length === 13) {
+        return `${clean.slice(0, 1)}-${clean.slice(1, 5)}-${clean.slice(5, 10)}-${clean.slice(10, 12)}-${clean.slice(12, 13)}`;
+      }
+
+      if (clean.length > 9) {
+        return `${clean.slice(0, 3)}-${clean.slice(3, 4)}-${clean.slice(4, 9)}-${clean.slice(9)}`;
+      } else if (clean.length > 4) {
+        return `${clean.slice(0, 3)}-${clean.slice(3, 4)}-${clean.slice(4)}`;
+      } else if (clean.length > 3) {
+        return `${clean.slice(0, 3)}-${clean.slice(3)}`;
+      }
+      return clean;
+    }
+
+    function formatBankAccountInput(input, bankInputId = 'newBankName') {
+      const bankName = document.getElementById(bankInputId)?.value || '';
+      const bankCfg = getBankConfig(bankName);
+      const maxDigits = bankCfg ? bankCfg.digits : 14;
+      const clean = input.value.replace(/\D/g, '').slice(0, maxDigits);
+
+      let formatted = '';
+      if (bankCfg && bankCfg.digits === 12) {
+        if (clean.length > 8) {
+          formatted = `${clean.slice(0, 4)}-${clean.slice(4, 8)}-${clean.slice(8, 12)}`;
+        } else if (clean.length > 4) {
+          formatted = `${clean.slice(0, 4)}-${clean.slice(4, 8)}`;
+        } else {
+          formatted = clean;
+        }
+      } else if (bankCfg && bankCfg.digits === 14) {
+        if (clean.length > 12) {
+          formatted = `${clean.slice(0, 4)}-${clean.slice(4, 8)}-${clean.slice(8, 12)}-${clean.slice(12, 14)}`;
+        } else if (clean.length > 8) {
+          formatted = `${clean.slice(0, 4)}-${clean.slice(4, 8)}-${clean.slice(8, 12)}`;
+        } else if (clean.length > 4) {
+          formatted = `${clean.slice(0, 4)}-${clean.slice(4, 8)}`;
+        } else {
+          formatted = clean;
+        }
+      } else if (bankCfg && bankCfg.code === 'PROMPTPAY') {
+        if (clean.length === 13) {
+          formatted = `${clean.slice(0, 1)}-${clean.slice(1, 5)}-${clean.slice(5, 10)}-${clean.slice(10, 12)}-${clean.slice(12, 13)}`;
+        } else if (clean.length > 6) {
+          formatted = `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6, 10)}`;
+        } else if (clean.length > 3) {
+          formatted = `${clean.slice(0, 3)}-${clean.slice(3)}`;
+        } else {
+          formatted = clean;
+        }
+      } else {
+        if (clean.length > 9) {
+          formatted = `${clean.slice(0, 3)}-${clean.slice(3, 4)}-${clean.slice(4, 9)}-${clean.slice(9, 10)}`;
+        } else if (clean.length > 4) {
+          formatted = `${clean.slice(0, 3)}-${clean.slice(3, 4)}-${clean.slice(4)}`;
+        } else if (clean.length > 3) {
+          formatted = `${clean.slice(0, 3)}-${clean.slice(3)}`;
+        } else {
+          formatted = clean;
+        }
+      }
+
+      input.value = formatted;
+    }
+
+    function getBankColor(bankName) {
+      if (!bankName) return '#38bdf8';
+      const found = getBankConfig(bankName);
+      return found ? found.color : '#38bdf8';
+    }
+
+    function openCreateModal() {
+      document.getElementById('createForm').reset();
+      renderBankGrid('newBankGrid', 'newBankName', 'newBankSelectedText', '');
+      document.getElementById('createModal').classList.add('active');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.remove('active');
+    }
+
+    function validateBankAccount(bankName, accountNo) {
+      if (!bankName) return { valid: false, message: 'กรุณากดเลือกธนาคารรับเงินโอน' };
+      const clean = accountNo.replace(/\D/g, '');
+      const bankCfg = getBankConfig(bankName);
+      if (!bankCfg) {
+        if (clean.length < 9) return { valid: false, message: 'กรุณากรอกเลขที่บัญชีธนาคารให้ถูกต้อง' };
+        return { valid: true };
+      }
+
+      if (bankCfg.code === 'PROMPTPAY') {
+        if (clean.length !== 10 && clean.length !== 13) {
+          return { valid: false, message: 'พร้อมเพย์ต้องเป็นเบอร์มือถือ 10 หลัก หรือเลขบัตรประชาชน 13 หลัก' };
+        }
+        return { valid: true };
+      }
+
+      if (clean.length !== bankCfg.digits) {
+        return {
+          valid: false,
+          message: `${bankCfg.name} ต้องมีเลขที่บัญชีจำนวน ${bankCfg.digits} หลักพอดี (ปัจจุบันกรอก ${clean.length} หลัก)`
+        };
+      }
+
+      return { valid: true };
+    }
+
+    async function handleCreateExpense(e) {
+      e.preventDefault();
+      const bankName = document.getElementById('newBankName').value;
+      const accountNo = document.getElementById('newBankAccountNo').value;
+
+      const valCheck = validateBankAccount(bankName, accountNo);
+      if (!valCheck.valid) {
+        showToast(valCheck.message, 'warning');
+        document.getElementById('newBankAccountNo').focus();
+        return;
+      }
+
+      const saveBtn = document.getElementById('saveCreateBtn');
+      saveBtn.disabled = true;
+      saveBtn.innerText = 'กำลังบันทึก...';
+
+      const payload = {
+        title: document.getElementById('newTitle').value,
+        category: document.getElementById('newCategory').value,
+        total_amount: document.getElementById('newAmount').value,
+        bank_name: bankName,
+        bank_account_no: document.getElementById('newBankAccountNo').value,
+        description: document.getElementById('newDescription').value
+      };
+
+      try {
+        await api.post('/api/expenses', payload);
+        showToast('ยื่นคำขอเบิกเงินสำเร็จ', 'success');
+        closeModal('createModal');
+        await loadExpenses();
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerText = 'ส่งคำขอ';
+      }
+    }
+
+    async function viewExpenseDetail(id) {
+      try {
+        const res = await api.get(`/api/expenses/${id}`);
+        currentExpense = res.data;
+
+        document.getElementById('modalTitle').innerText = `${currentExpense.request_no} - ${currentExpense.title}`;
+        document.getElementById('modalSubInfo').innerText = `ผู้ยื่น: ${currentExpense.requester_name} (${currentExpense.requester_dept}) | ยื่นเมื่อ: ${formatDate(currentExpense.created_at)}`;
+        document.getElementById('modalDesc').innerText = currentExpense.description || 'ไม่มีรายละเอียดเพิ่มเติม';
+        document.getElementById('modalAmount').innerText = formatMoney(currentExpense.total_amount);
+        document.getElementById('modalStatusBadge').innerHTML = `<span class="badge badge-${currentExpense.status}">${translateStatus(currentExpense.status)}</span>`;
+
+        const bankName = currentExpense.bank_name || 'ไม่ได้ระบุธนาคาร';
+        const rawAccountNo = currentExpense.bank_account_no || '-';
+        const formattedAccountNo = rawAccountNo !== '-' ? formatBankAccount(rawAccountNo, bankName) : '-';
+        document.getElementById('modalBankName').innerText = bankName;
+        document.getElementById('modalBankAccountNo').innerText = formattedAccountNo;
+        const bankDot = document.getElementById('modalBankDot');
+        if (bankDot) {
+          bankDot.style.background = getBankColor(bankName);
+        }
+
+        let approvalText = '';
+        if (currentExpense.manager_name) {
+          approvalText += `<div><strong>หัวหน้างาน (${currentExpense.manager_name}):</strong> ${currentExpense.manager_comment || '-'} (${formatDate(currentExpense.manager_action_at)})</div>`;
+        }
+        if (currentExpense.finance_name) {
+          approvalText += `<div style="margin-top: 0.25rem;"><strong>ฝ่ายการเงิน (${currentExpense.finance_name}):</strong> ${currentExpense.finance_comment || '-'} (${formatDate(currentExpense.paid_at)})</div>`;
+        }
+        document.getElementById('approvalInfo').innerHTML = approvalText;
+
+        renderAttachments(currentExpense.attachments);
+
+        const uploadSection = document.getElementById('uploadSection');
+        document.getElementById('uploadRequestId').value = currentExpense.id;
+
+        const canUploadSlip = currentUser.permissions && currentUser.permissions.includes('file.upload_slip');
+        const canUploadReceipt = currentUser.permissions && currentUser.permissions.includes('file.upload_receipt');
+
+        if (canUploadSlip && ['APPROVED_MANAGER', 'PAID'].includes(currentExpense.status)) {
+          uploadSection.style.display = 'block';
+          document.getElementById('uploadFileType').value = 'PAYMENT_SLIP';
+          document.getElementById('uploadTitle').innerText = 'แนบหลักฐานการโอนเงิน (Payment Slip)';
+        } else if (canUploadReceipt && (['PENDING_MANAGER', 'REJECTED'].includes(currentExpense.status) || (currentUser.role_name && currentUser.role_name.toLowerCase() === 'admin'))) {
+          uploadSection.style.display = 'block';
+          document.getElementById('uploadFileType').value = 'RECEIPT';
+          document.getElementById('uploadTitle').innerText = 'แนบใบเสร็จเพิ่มเติม (Receipt)';
+        } else {
+          uploadSection.style.display = 'none';
+        }
+
+        const editBox = document.getElementById('editActionBox');
+        const hasUpdatePerm = currentUser.permissions && currentUser.permissions.includes('expense.update_own');
+        const canEdit = hasUpdatePerm && ((currentUser.id === currentExpense.user_id && ['PENDING_MANAGER', 'REJECTED'].includes(currentExpense.status)) || (currentUser.role_name && currentUser.role_name.toLowerCase() === 'admin'));
+        editBox.style.display = canEdit ? 'block' : 'none';
+
+        const logsSection = document.getElementById('expenseLogsSection');
+        const isAdmin = currentUser.role_name && currentUser.role_name.toLowerCase() === 'admin';
+        if (isAdmin) {
+          logsSection.style.display = 'block';
+          await loadExpenseLogs(currentExpense.id);
+        } else {
+          logsSection.style.display = 'none';
+        }
+
+        const actionControls = document.getElementById('actionControls');
+        const managerControls = document.getElementById('managerControls');
+        const managerRevokeControls = document.getElementById('managerRevokeControls');
+        const financeControls = document.getElementById('financeControls');
+
+        actionControls.style.display = 'none';
+        managerControls.style.display = 'none';
+        managerRevokeControls.style.display = 'none';
+        financeControls.style.display = 'none';
+
+        document.getElementById('managerComment').value = '';
+        document.getElementById('managerRevokeComment').value = '';
+
+        const hasManagerPerm = currentUser.permissions && currentUser.permissions.includes('expense.approve_manager');
+        const hasFinancePerm = currentUser.permissions && currentUser.permissions.includes('expense.process_finance');
+
+        if (hasManagerPerm && currentExpense.status === 'PENDING_MANAGER') {
+          actionControls.style.display = 'block';
+          managerControls.style.display = 'block';
+        }
+
+        if (hasManagerPerm && currentExpense.status === 'APPROVED_MANAGER') {
+          actionControls.style.display = 'block';
+          managerRevokeControls.style.display = 'block';
+        }
+
+        if (hasFinancePerm && currentExpense.status === 'APPROVED_MANAGER') {
+          actionControls.style.display = 'block';
+          financeControls.style.display = 'block';
+        }
+
+        document.getElementById('detailModal').classList.add('active');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function loadExpenseLogs(expenseId) {
+      const listEl = document.getElementById('expenseLogsList');
+      try {
+        const res = await api.get(`/api/expenses/${expenseId}/logs`);
+        const logs = res.data;
+        if (!logs || logs.length === 0) {
+          listEl.innerHTML = `<div style="color: var(--text-muted);">ยังไม่มีประวัติการดำเนินการ</div>`;
+          return;
+        }
+
+        listEl.innerHTML = logs.map(l => `
+          <div class="log-item-row">
+            <span style="color: var(--primary); font-weight: 600;">[${formatDate(l.created_at)}]</span>
+            <strong style="color: var(--text-main);">${l.username}</strong>
+            <span class="log-action-tag">${l.action}</span>:
+            <span style="color: var(--text-main);">${l.details || '-'}</span>
+          </div>
+        `).join('');
+      } catch (err) {
+        listEl.innerHTML = `<div style="color: var(--text-muted);">ไม่สามารถโหลดประวัติได้</div>`;
+      }
+    }
+
+    function openEditExpenseModal() {
+      if (!currentExpense) return;
+      document.getElementById('editExpenseId').value = currentExpense.id;
+      document.getElementById('editTitle').value = currentExpense.title;
+      document.getElementById('editCategory').value = currentExpense.category;
+      document.getElementById('editAmount').value = currentExpense.total_amount;
+      document.getElementById('editDescription').value = currentExpense.description || '';
+      document.getElementById('editBankAccountNo').value = currentExpense.bank_account_no ? formatBankAccount(currentExpense.bank_account_no, currentExpense.bank_name || '') : '';
+      renderBankGrid('editBankGrid', 'editBankName', 'editBankSelectedText', currentExpense.bank_name || '');
+      selectBankOption('editBankGrid', 'editBankName', 'editBankSelectedText', currentExpense.bank_name || '');
+      document.getElementById('editExpenseModal').classList.add('active');
+    }
+
+    async function handleUpdateExpense(e) {
+      e.preventDefault();
+      const bankName = document.getElementById('editBankName').value;
+      const accountNo = document.getElementById('editBankAccountNo').value;
+
+      const valCheck = validateBankAccount(bankName, accountNo);
+      if (!valCheck.valid) {
+        showToast(valCheck.message, 'warning');
+        document.getElementById('editBankAccountNo').focus();
+        return;
+      }
+
+      const saveBtn = document.getElementById('saveEditBtn');
+      saveBtn.disabled = true;
+      saveBtn.innerText = 'กำลังบันทึก...';
+
+      const id = document.getElementById('editExpenseId').value;
+      const payload = {
+        title: document.getElementById('editTitle').value,
+        category: document.getElementById('editCategory').value,
+        total_amount: document.getElementById('editAmount').value,
+        bank_name: bankName,
+        bank_account_no: document.getElementById('editBankAccountNo').value,
+        description: document.getElementById('editDescription').value
+      };
+
+      try {
+        await api.put(`/api/expenses/${id}`, payload);
+        showToast('แก้ไขคำขอสำเร็จ', 'success');
+        closeModal('editExpenseModal');
+        await viewExpenseDetail(id);
+        await loadExpenses();
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerText = 'บันทึกการแก้ไข';
+      }
+    }
+
+    function renderAttachments(files) {
+      const list = document.getElementById('attachmentList');
+      if (!files || files.length === 0) {
+        list.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem;">ยังไม่มีเอกสารแนบ</p>`;
+        return;
+      }
+      list.innerHTML = files.map(f => {
+        const isAdmin = currentUser && currentUser.role_name && currentUser.role_name.toLowerCase() === 'admin';
+        const hasDeletePerm = currentUser && currentUser.permissions && currentUser.permissions.includes('file.delete');
+        const isOwnUploadedFile = currentUser && currentUser.id === f.uploaded_by;
+        const canDeleteFile = hasDeletePerm && (isAdmin || isOwnUploadedFile);
+
+        return `
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); padding: 0.65rem 1rem; border-radius: 10px; margin-bottom: 0.5rem; gap: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; overflow: hidden;">
+              <span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 4px; border: 1px solid rgba(56, 189, 248, 0.3); flex-shrink: 0;">${f.file_type}</span>
+              <span style="font-size: 0.88rem; font-weight: 500; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${f.original_name}">${f.original_name}</span>
+              <small style="color: var(--text-muted); font-size: 0.75rem; flex-shrink: 0;">(${(f.file_size / 1024).toFixed(1)} KB)</small>
+            </div>
+            <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
+              <a href="/api/files/${f.id}" target="_blank" class="btn-view-file">
+                <span>👁️</span> ดู / ดาวน์โหลด
+              </a>
+              ${canDeleteFile ? `
+                <button type="button" class="btn-delete-file" onclick="deleteAttachment(${f.id}, '${f.original_name.replace(/'/g, "\\'")}')">
+                  <span>🗑️</span> ลบ
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function deleteAttachment(fileId, fileName) {
+      const ok = await customConfirm({
+        title: 'ยืนยันการลบเอกสารแนบ',
+        message: `คุณแน่ใจหรือไม่ว่าต้องการลบไฟล์ "${fileName}"? ไฟล์จะถูกลบออกจากเซิร์ฟเวอร์อย่างถาวร`,
+        icon: '🗑️',
+        confirmText: 'ลบไฟล์',
+        confirmType: 'danger'
+      });
+      if (!ok) return;
+
+      try {
+        await api.delete(`/api/files/${fileId}`);
+        showToast(`ลบไฟล์ ${fileName} สำเร็จ`, 'success');
+        await viewExpenseDetail(currentExpense.id);
+        await loadExpenses();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function handleUploadFile(e) {
+      e.preventDefault();
+      const fileInput = document.getElementById('fileInput');
+      if (!fileInput.files[0]) return;
+
+      const formData = new FormData();
+      formData.append('request_id', document.getElementById('uploadRequestId').value);
+      formData.append('file_type', document.getElementById('uploadFileType').value);
+      formData.append('file', fileInput.files[0]);
+
+      const uploadBtn = document.getElementById('uploadBtn');
+      uploadBtn.disabled = true;
+      uploadBtn.innerText = 'กำลังส่ง...';
+
+      try {
+        await api.upload('/api/files/upload', formData);
+        showToast('อัปโหลดไฟล์สำเร็จ', 'success');
+        fileInput.value = '';
+        await viewExpenseDetail(currentExpense.id);
+        await loadExpenses();
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.innerText = 'อัปโหลด';
+      }
+    }
+
+    async function submitManagerAction(action) {
+      const comment = document.getElementById('managerComment').value;
+      try {
+        await api.post(`/api/expenses/${currentExpense.id}/manager-action`, { action, comment });
+        showToast(`ดำเนินการ ${action === 'APPROVE' ? 'อนุมัติ' : 'ไม่อนุมัติ'} สำเร็จ`, 'success');
+        closeModal('detailModal');
+        await loadExpenses();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function submitManagerRevokeApproval() {
+      const comment = document.getElementById('managerRevokeComment').value.trim();
+      if (!comment) {
+        showToast('กรุณาระบุเหตุผลในการยกเลิกการอนุมัติ', 'warning');
+        document.getElementById('managerRevokeComment').focus();
+        return;
+      }
+
+      const ok = await customConfirm({
+        title: 'ยืนยันยกเลิกการอนุมัติ',
+        message: 'ยืนยันที่จะยกเลิกการอนุมัติคำขอนี้ใช่หรือไม่? สถานะคำขอจะถูกเปลี่ยนกลับเป็น "รอพิจารณา" และเปิดโอกาสให้แก้ไขหรือพิจารณาใหม่',
+        icon: '↩️',
+        confirmText: 'ยืนยันยกเลิก',
+        confirmType: 'warning'
+      });
+      if (!ok) return;
+
+      try {
+        const res = await api.post(`/api/expenses/${currentExpense.id}/manager-action`, {
+          action: 'CANCEL_APPROVAL',
+          comment
+        });
+        showToast(res.message || 'ยกเลิกการอนุมัติเรียบร้อยแล้ว', 'success');
+        closeModal('detailModal');
+        await loadExpenses();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function submitFinancePayout() {
+      const comment = document.getElementById('financeComment').value;
+      try {
+        await api.post(`/api/expenses/${currentExpense.id}/finance-payout`, { comment });
+        showToast('บันทึกการจ่ายเงินเรียบร้อยแล้ว', 'success');
+        closeModal('detailModal');
+        await loadExpenses();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    window.onload = init;
+</script>
+</body>
+
+</html>
