@@ -9,3 +9,5 @@ Thumbs.db
 *.pdf
 ไม่ได้ใช้/
 docs/
+ARCHITECTURE_AND_PLAN.md
+SECURITY_AND_CONCURRENCY.md
