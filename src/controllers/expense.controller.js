@@ -141,17 +141,27 @@ exports.createExpense = async (req, res) => {
 
   try {
     const currentYear = new Date().getFullYear();
-    await db.query(`CREATE SEQUENCE IF NOT EXISTS expense_req_seq START 1`);
+    const prefix = `EXP-${currentYear}-`;
 
-    // ตรวจสอบจำนวนคำขอในระบบ หากว่างเปล่าให้รีเซ็ตกลับไปเริ่มที่ 1 เสมอ
-    const countCheck = await db.query('SELECT COUNT(*) AS total FROM expense_requests');
-    if (parseInt(countCheck.rows[0].total, 10) === 0) {
-      await db.query(`ALTER SEQUENCE expense_req_seq RESTART WITH 1`);
+    // ค้นหาเลขที่คำขอล่าสุดของปีปัจจุบัน เพื่อป้องกันการซ้ำกับข้อมูลที่ seed ไว้
+    const maxRes = await db.query(
+      `SELECT request_no FROM expense_requests 
+       WHERE request_no LIKE $1 
+       ORDER BY request_no DESC LIMIT 1`,
+      [`${prefix}%`]
+    );
+
+    let nextNum = 1;
+    if (maxRes.rows.length > 0) {
+      const lastNo = maxRes.rows[0].request_no;
+      const parts = lastNo.split('-');
+      const lastSequence = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastSequence)) {
+        nextNum = lastSequence + 1;
+      }
     }
 
-    const seqRes = await db.query(`SELECT nextval('expense_req_seq') AS next_num`);
-    const nextNum = seqRes.rows[0].next_num;
-    const requestNo = `EXP-${currentYear}-${String(nextNum).padStart(4, '0')}`;
+    const requestNo = `${prefix}${String(nextNum).padStart(4, '0')}`;
 
     const query = `
       INSERT INTO expense_requests (request_no, user_id, title, category, total_amount, description, bank_name, bank_account_no, status)
