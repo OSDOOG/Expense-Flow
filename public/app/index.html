@@ -1081,8 +1081,9 @@
         const isAdmin = currentUser && currentUser.role_name && currentUser.role_name.toLowerCase() === 'admin';
         const hasDeletePerm = currentUser && currentUser.permissions && currentUser.permissions.includes('file.delete');
         const isOwnUploadedFile = currentUser && currentUser.id === f.uploaded_by;
+        // กฎความปลอดภัย: หากคำขออยู่ในสถานะอนุมัติแล้ว (APPROVED_MANAGER) หรือจ่ายเงินแล้ว (PAID) ห้ามทุกคนลบเอกสารแนบเด็ดขาด
         const isExpenseApprovedOrPaid = currentExpense && ['APPROVED_MANAGER', 'PAID'].includes(currentExpense.status);
-        const canDeleteFile = hasDeletePerm && ((isAdmin && currentExpense.status !== 'PAID') || (isOwnUploadedFile && !isExpenseApprovedOrPaid));
+        const canDeleteFile = !isExpenseApprovedOrPaid && hasDeletePerm && (isAdmin || isOwnUploadedFile);
 
         return `
           <div class="attachment-item">
