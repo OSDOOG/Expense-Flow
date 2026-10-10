@@ -1084,11 +1084,11 @@
         const canDeleteFile = hasDeletePerm && (isAdmin || isOwnUploadedFile);
 
         return `
-          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); padding: 0.65rem 1rem; border-radius: 10px; margin-bottom: 0.5rem; gap: 0.75rem;">
-            <div style="display: flex; align-items: center; gap: 0.5rem; overflow: hidden;">
-              <span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 4px; border: 1px solid rgba(56, 189, 248, 0.3); flex-shrink: 0;">${f.file_type}</span>
-              <span style="font-size: 0.88rem; font-weight: 500; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${f.original_name}">${f.original_name}</span>
-              <small style="color: var(--text-muted); font-size: 0.75rem; flex-shrink: 0;">(${(f.file_size / 1024).toFixed(1)} KB)</small>
+          <div class="attachment-item">
+            <div style="display: flex; align-items: center; gap: 0.6rem; overflow: hidden;">
+              <span class="attachment-badge">${f.file_type}</span>
+              <span class="attachment-name" title="${f.original_name}">${f.original_name}</span>
+              <small class="attachment-size">(${(f.file_size / 1024).toFixed(1)} KB)</small>
             </div>
             <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
               <a href="/api/files/${f.id}" target="_blank" class="btn-view-file">
