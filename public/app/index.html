@@ -1081,7 +1081,8 @@
         const isAdmin = currentUser && currentUser.role_name && currentUser.role_name.toLowerCase() === 'admin';
         const hasDeletePerm = currentUser && currentUser.permissions && currentUser.permissions.includes('file.delete');
         const isOwnUploadedFile = currentUser && currentUser.id === f.uploaded_by;
-        const canDeleteFile = hasDeletePerm && (isAdmin || isOwnUploadedFile);
+        const isExpenseApprovedOrPaid = currentExpense && ['APPROVED_MANAGER', 'PAID'].includes(currentExpense.status);
+        const canDeleteFile = hasDeletePerm && ((isAdmin && currentExpense.status !== 'PAID') || (isOwnUploadedFile && !isExpenseApprovedOrPaid));
 
         return `
           <div class="attachment-item">

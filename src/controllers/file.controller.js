@@ -402,10 +402,19 @@ exports.deleteFile = async (req, res) => {
         return res.status(403).json({ success: false, error: 'ปฏิเสธการเข้าถึง: ท่านสามารถลบได้เฉพาะไฟล์แนบที่ตนเองเป็นผู้อัปโหลดเท่านั้น' });
       }
 
-      if (file.file_type === 'RECEIPT' && file.request_status === 'PAID') {
+      // ตรวจสอบสถานะคำขอ: หากอนุมัติแล้วหรือจ่ายเงินแล้ว จะไม่สามารถลบไฟล์เอกสารได้
+      if (['APPROVED_MANAGER', 'PAID'].includes(file.request_status)) {
         return res.status(400).json({
           success: false,
-          error: 'ไม่สามารถลบใบเสร็จของคำขอที่ดำเนินการจ่ายเงินเสร็จสิ้นแล้วได้'
+          error: `ไม่สามารถลบเอกสารแนบได้ เนื่องจากคำขอนี้ได้รับการอนุมัติแล้ว (${file.request_status === 'PAID' ? 'จ่ายเงินแล้ว' : 'อนุมัติแล้ว/รอจ่ายเงิน'})`
+        });
+      }
+    } else {
+      // แม้แต่ Admin ก็ไม่อนุญาตให้ลบหลักฐานของรายการที่จ่ายเงินแล้ว (Audit Compliance)
+      if (file.request_status === 'PAID') {
+        return res.status(400).json({
+          success: false,
+          error: 'ไม่สามารถลบเอกสารแนบของคำขอที่ดำเนินการจ่ายเงินเสร็จสิ้นแล้วได้ เพื่อความถูกต้องของระบบบัญชี'
         });
       }
     }
