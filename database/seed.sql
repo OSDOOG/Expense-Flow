@@ -32,9 +32,9 @@ INSERT INTO permissions (id, code, name, module, description) VALUES
 (15, 'user.create', 'เพิ่มผู้ใช้งานใหม่', 'USER', 'สร้างบัญชีผู้ใช้งานใหม่ในระบบ'),
 (16, 'user.read', 'ดูรายชื่อผู้ใช้งาน', 'USER', 'ดูรายชื่อและข้อมูลผู้ใช้ทั้งหมด'),
 (17, 'user.update', 'แก้ไขผู้ใช้และเปลี่ยน Role', 'USER', 'แก้ไขข้อมูลผู้ใช้และมอบหมายบทบาทใหม่ผ่านหน้าเว็บ'),
-(18, 'user.delete', 'ลบผู้ใช้งาน', 'USER', 'ลบบัญชีผู้ใช้'),
-(19, 'log.read', 'ดูประวัติการใช้งาน (Audit Log)', 'LOG', 'ค้นหา กรอง และเรียกดูประวัติ Audit Log ย้อนหลัง'),
-(20, 'user.suspend', 'ระงับ/ปลดระงับผู้ใช้งาน', 'USER', 'สามารถสั่งระงับชั่วคราวหรือปลดระงับบัญชีผู้ใช้ได้')
+(18, 'user.delete', 'ระงับ/ลบผู้ใช้งาน', 'USER', 'ระงับการใช้งานหรือลบบัญชีผู้ใช้'),
+
+(19, 'log.read', 'ดูประวัติการใช้งาน (Audit Log)', 'LOG', 'ค้นหา กรอง และเรียกดูประวัติ Audit Log ย้อนหลัง')
 ON CONFLICT (id) DO UPDATE SET 
     code = EXCLUDED.code,
     name = EXCLUDED.name,
@@ -67,7 +67,8 @@ INSERT INTO role_permissions (role_id, permission_id) VALUES
 (4, 4),
 (4, 5),
 (4, 8),
-(4, 10);
+(4, 10),
+(4, 11);
 
 INSERT INTO users (id, username, password_hash, full_name, email, department, role_id, is_active) VALUES
 (1, 'admin', '$2b$10$5ywCUt3/eLrKfw7t82LV9uvBKRvT9dvkFchkdIzUEoV2ATwG0NO8q', 'สมชาย ดูแลระบบ (Admin)', 'admin@company.local', 'IT Administration', 1, TRUE),
