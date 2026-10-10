@@ -6,3 +6,6 @@ uploads/slips/*
 !uploads/slips/.gitkeep
 .DS_Store
 Thumbs.db
+*.pdf
+ไม่ได้ใช้/
+docs/
