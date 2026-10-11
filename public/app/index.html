@@ -33,6 +33,60 @@
       margin-bottom: 0.75rem;
     }
 
+    .promptpay-type-selector {
+      display: none;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 0.3rem;
+      border-radius: 10px;
+      margin-top: 0.6rem;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+    .promptpay-type-btn {
+      flex: 1;
+      padding: 0.45rem 0.6rem;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      transition: all 0.2s ease;
+    }
+    .promptpay-type-btn:hover {
+      color: #f8fafc;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .promptpay-type-btn.active {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #38bdf8;
+      box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+    }
+    [data-theme="light"] .promptpay-type-selector {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+    [data-theme="light"] .promptpay-type-btn {
+      color: #64748b;
+    }
+    [data-theme="light"] .promptpay-type-btn:hover {
+      color: #0f172a;
+      background: rgba(0, 0, 0, 0.04);
+    }
+    [data-theme="light"] .promptpay-type-btn.active {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #0284c7;
+    }
+
+
     .bank-pill {
       display: flex;
       align-items: center;
@@ -276,7 +330,16 @@
             
           </div>
 
-          <label class="form-label" style="margin-top: 0.85rem;">เลขที่บัญชีธนาคาร (Bank Account No.) *</label>
+          <div id="newPromptPaySelector" class="promptpay-type-selector">
+            <button type="button" id="newPpTypePhone" class="promptpay-type-btn active" onclick="setPromptPayType('new', 'PHONE')">
+              📱 เบอร์มือถือ (10 หลัก)
+            </button>
+            <button type="button" id="newPpTypeIdCard" class="promptpay-type-btn" onclick="setPromptPayType('new', 'IDCARD')">
+              🪪 เลขบัตรประชาชน (13 หลัก)
+            </button>
+          </div>
+
+          <label id="newAccountLabel" class="form-label" style="margin-top: 0.85rem;">เลขที่บัญชีธนาคาร (Bank Account No.) *</label>
           <input type="text" id="newBankAccountNo" class="form-control" placeholder="กรุณาเลือกธนาคารก่อน" maxlength="18" oninput="formatBankAccountInput(this, 'newBankName')" required>
           <small id="newBankHelpText" style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.35rem;">
             * โปรดเลือกธนาคารด้านบนเพื่อกำหนดรูปแบบและจำนวนหลักเลขบัญชี
@@ -434,7 +497,16 @@
             
           </div>
 
-          <label class="form-label" style="margin-top: 0.85rem;">เลขที่บัญชีธนาคาร (Bank Account No.) *</label>
+          <div id="editPromptPaySelector" class="promptpay-type-selector">
+            <button type="button" id="editPpTypePhone" class="promptpay-type-btn active" onclick="setPromptPayType('edit', 'PHONE')">
+              📱 เบอร์มือถือ (10 หลัก)
+            </button>
+            <button type="button" id="editPpTypeIdCard" class="promptpay-type-btn" onclick="setPromptPayType('edit', 'IDCARD')">
+              🪪 เลขบัตรประชาชน (13 หลัก)
+            </button>
+          </div>
+
+          <label id="editAccountLabel" class="form-label" style="margin-top: 0.85rem;">เลขที่บัญชีธนาคาร (Bank Account No.) *</label>
           <input type="text" id="editBankAccountNo" class="form-control" placeholder="กรุณาเลือกธนาคารก่อน" maxlength="18" oninput="formatBankAccountInput(this, 'editBankName')" required>
           <small id="editBankHelpText" style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 0.35rem;">
             * โปรดเลือกธนาคารด้านบนเพื่อกำหนดรูปแบบและจำนวนหลักเลขบัญชี
@@ -685,43 +757,107 @@
       }
 
       const isCreate = gridId === 'newBankGrid';
+      const mode = isCreate ? 'new' : 'edit';
       const inputId = isCreate ? 'newBankAccountNo' : 'editBankAccountNo';
       const helpId = isCreate ? 'newBankHelpText' : 'editBankHelpText';
+      const labelIdEl = isCreate ? 'newAccountLabel' : 'editAccountLabel';
+      const ppSelector = document.getElementById(isCreate ? 'newPromptPaySelector' : 'editPromptPaySelector');
       const inputEl = document.getElementById(inputId);
       const helpEl = document.getElementById(helpId);
+      const labelEl = document.getElementById(labelIdEl);
       const bankCfg = getBankConfig(bankName);
 
-      if (inputEl && bankCfg) {
-        inputEl.placeholder = bankCfg.placeholder;
-        if (bankCfg.digits === 10) {
-          inputEl.maxLength = 13;
-        } else if (bankCfg.digits === 12) {
-          inputEl.maxLength = 14;
-        } else if (bankCfg.digits === 14) {
-          inputEl.maxLength = 17;
+      if (bankCfg && bankCfg.code === 'PROMPTPAY') {
+        if (ppSelector) ppSelector.style.display = 'flex';
+        // ตรวจสอบค่าเดิมถ้ามีอยู่ เพื่อเลือกแท็บเริ่มต้นให้ถูกต้อง
+        const cleanVal = inputEl ? inputEl.value.replace(/\D/g, '') : '';
+        const initialType = cleanVal.length === 13 ? 'IDCARD' : 'PHONE';
+        setPromptPayType(mode, initialType, false);
+      } else {
+        if (ppSelector) ppSelector.style.display = 'none';
+        if (labelEl) labelEl.textContent = 'เลขที่บัญชีธนาคาร (Bank Account No.) *';
+
+        if (inputEl && bankCfg) {
+          inputEl.placeholder = bankCfg.placeholder;
+          if (bankCfg.digits === 10) {
+            inputEl.maxLength = 13;
+          } else if (bankCfg.digits === 12) {
+            inputEl.maxLength = 14;
+          } else if (bankCfg.digits === 14) {
+            inputEl.maxLength = 17;
+          } else {
+            inputEl.maxLength = 18;
+          }
+
+          if (inputEl.value) {
+            formatBankAccountInput(inputEl, hiddenInputId);
+          }
+        }
+
+        if (helpEl && bankCfg) {
+          let helpMsg = '';
+          if (bankCfg.digits === 10) {
+            helpMsg = `💡 กำหนดเลขบัญชี 10 หลัก (${bankCfg.placeholder})`;
+          } else if (bankCfg.digits === 12) {
+            helpMsg = `💡 กำหนดเลขบัญชี 12 หลัก (${bankCfg.placeholder})`;
+          } else if (bankCfg.digits === 14) {
+            helpMsg = `💡 กำหนดเลขบัญชี 14 หลัก (${bankCfg.placeholder})`;
+          } else {
+            helpMsg = `💡 เลขที่บัญชีธนาคาร`;
+          }
+          helpEl.innerHTML = `<span style="color: #38bdf8; font-weight: 600;">${helpMsg}</span>`;
+        }
+      }
+    }
+
+    const currentPromptPayTypes = { new: 'PHONE', edit: 'PHONE' };
+
+    function setPromptPayType(mode, type, clearValue = true) {
+      currentPromptPayTypes[mode] = type;
+      const isCreate = mode === 'new';
+      const phoneBtn = document.getElementById(isCreate ? 'newPpTypePhone' : 'editPpTypePhone');
+      const idCardBtn = document.getElementById(isCreate ? 'newPpTypeIdCard' : 'editPpTypeIdCard');
+      const inputEl = document.getElementById(isCreate ? 'newBankAccountNo' : 'editBankAccountNo');
+      const helpEl = document.getElementById(isCreate ? 'newBankHelpText' : 'editBankHelpText');
+      const labelEl = document.getElementById(isCreate ? 'newAccountLabel' : 'editAccountLabel');
+
+      if (phoneBtn && idCardBtn) {
+        if (type === 'PHONE') {
+          phoneBtn.classList.add('active');
+          idCardBtn.classList.remove('active');
         } else {
-          inputEl.maxLength = 18;
+          idCardBtn.classList.add('active');
+          phoneBtn.classList.remove('active');
+        }
+      }
+
+      if (inputEl) {
+        if (clearValue) {
+          inputEl.value = '';
+        }
+        if (type === 'PHONE') {
+          inputEl.placeholder = '0xx-xxx-xxxx (เบอร์มือถือ 10 หลัก)';
+          inputEl.maxLength = 12; // 0xx-xxx-xxxx = 12 chars
+          if (labelEl) labelEl.textContent = 'เบอร์โทรศัพท์มือถือพร้อมเพย์ (Mobile No.) *';
+          if (helpEl) {
+            helpEl.innerHTML = `<span style="color: #38bdf8; font-weight: 600;">💡 กรอกเบอร์มือถือ 10 หลัก (เช่น 081-234-5678)</span>`;
+          }
+        } else {
+          inputEl.placeholder = 'x-xxxx-xxxxx-xx-x (เลขประจำตัวประชาชน 13 หลัก)';
+          inputEl.maxLength = 17; // x-xxxx-xxxxx-xx-x = 17 chars
+          if (labelEl) labelEl.textContent = 'เลขบัตรประจำตัวประชาชนพร้อมเพย์ (Citizen ID) *';
+          if (helpEl) {
+            helpEl.innerHTML = `<span style="color: #38bdf8; font-weight: 600;">💡 กรอกเลขประจำตัวประชาชน 13 หลัก (เช่น 1-1002-34567-89-0)</span>`;
+          }
         }
 
         if (inputEl.value) {
-          formatBankAccountInput(inputEl, hiddenInputId);
+          formatBankAccountInput(inputEl, isCreate ? 'newBankName' : 'editBankName');
         }
-      }
-
-      if (helpEl && bankCfg) {
-        let helpMsg = '';
-        if (bankCfg.digits === 10) {
-          helpMsg = `💡 กำหนดเลขบัญชี 10 หลัก (${bankCfg.placeholder})`;
-        } else if (bankCfg.digits === 12) {
-          helpMsg = `💡 กำหนดเลขบัญชี 12 หลัก (${bankCfg.placeholder})`;
-        } else if (bankCfg.digits === 14) {
-          helpMsg = `💡 กำหนดเลขบัญชี 14 หลัก (${bankCfg.placeholder})`;
-        } else {
-          helpMsg = `💡 เบอร์โทรศัพท์ 10 หลัก หรือ บัตรประชาชน 13 หลัก`;
-        }
-        helpEl.innerHTML = `<span style="color: #38bdf8; font-weight: 600;">${helpMsg}</span>`;
+        inputEl.focus();
       }
     }
+
 
     function formatBankAccount(val, bankName = '') {
       if (!val) return '-';
@@ -790,14 +926,32 @@
           formatted = clean;
         }
       } else if (bankCfg && bankCfg.code === 'PROMPTPAY') {
-        if (clean.length === 13) {
-          formatted = `${clean.slice(0, 1)}-${clean.slice(1, 5)}-${clean.slice(5, 10)}-${clean.slice(10, 12)}-${clean.slice(12, 13)}`;
-        } else if (clean.length > 6) {
-          formatted = `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6, 10)}`;
-        } else if (clean.length > 3) {
-          formatted = `${clean.slice(0, 3)}-${clean.slice(3)}`;
+        const isCreate = bankInputId === 'newBankName';
+        const activeType = currentPromptPayTypes[isCreate ? 'new' : 'edit'] || (clean.length === 13 ? 'IDCARD' : 'PHONE');
+
+        if (activeType === 'IDCARD') {
+          // เลขประจำตัวประชาชน: x-xxxx-xxxxx-xx-x (13 หลัก)
+          if (clean.length > 12) {
+            formatted = `${clean.slice(0, 1)}-${clean.slice(1, 5)}-${clean.slice(5, 10)}-${clean.slice(10, 12)}-${clean.slice(12, 13)}`;
+          } else if (clean.length > 10) {
+            formatted = `${clean.slice(0, 1)}-${clean.slice(1, 5)}-${clean.slice(5, 10)}-${clean.slice(10, 12)}`;
+          } else if (clean.length > 5) {
+            formatted = `${clean.slice(0, 1)}-${clean.slice(1, 5)}-${clean.slice(5, 10)}`;
+          } else if (clean.length > 1) {
+            formatted = `${clean.slice(0, 1)}-${clean.slice(1, 5)}`;
+          } else {
+            formatted = clean;
+          }
         } else {
-          formatted = clean;
+          // เบอร์โทรศัพท์มือถือ: 0xx-xxx-xxxx (10 หลัก)
+          const phoneClean = clean.slice(0, 10);
+          if (phoneClean.length > 6) {
+            formatted = `${phoneClean.slice(0, 3)}-${phoneClean.slice(3, 6)}-${phoneClean.slice(6, 10)}`;
+          } else if (phoneClean.length > 3) {
+            formatted = `${phoneClean.slice(0, 3)}-${phoneClean.slice(3, 6)}`;
+          } else {
+            formatted = phoneClean;
+          }
         }
       } else {
         if (clean.length > 9) {
@@ -822,6 +976,10 @@
 
     function openCreateModal() {
       document.getElementById('createForm').reset();
+      const ppSelector = document.getElementById('newPromptPaySelector');
+      if (ppSelector) ppSelector.style.display = 'none';
+      const labelEl = document.getElementById('newAccountLabel');
+      if (labelEl) labelEl.textContent = 'เลขที่บัญชีธนาคาร (Bank Account No.) *';
       renderBankGrid('newBankGrid', 'newBankName', 'newBankSelectedText', '');
       document.getElementById('createModal').classList.add('active');
     }
@@ -830,7 +988,7 @@
       document.getElementById(modalId).classList.remove('active');
     }
 
-    function validateBankAccount(bankName, accountNo) {
+    function validateBankAccount(bankName, accountNo, mode = 'new') {
       if (!bankName) return { valid: false, message: 'กรุณากดเลือกธนาคารรับเงินโอน' };
       const clean = accountNo.replace(/\D/g, '');
       const bankCfg = getBankConfig(bankName);
@@ -840,8 +998,18 @@
       }
 
       if (bankCfg.code === 'PROMPTPAY') {
-        if (clean.length !== 10 && clean.length !== 13) {
-          return { valid: false, message: 'พร้อมเพย์ต้องเป็นเบอร์มือถือ 10 หลัก หรือเลขบัตรประชาชน 13 หลัก' };
+        const activeType = currentPromptPayTypes[mode] || (clean.length === 13 ? 'IDCARD' : 'PHONE');
+        if (activeType === 'PHONE') {
+          if (clean.length !== 10) {
+            return { valid: false, message: `พร้อมเพย์เบอร์มือถือต้องมี 10 หลัก (ปัจจุบันกรอก ${clean.length} หลัก)` };
+          }
+          if (!clean.startsWith('0')) {
+            return { valid: false, message: 'เบอร์มือถือต้องขึ้นต้นด้วยเลข 0 (เช่น 08x, 09x, 06x)' };
+          }
+        } else {
+          if (clean.length !== 13) {
+            return { valid: false, message: `พร้อมเพย์เลขบัตรประชาชนต้องมี 13 หลัก (ปัจจุบันกรอก ${clean.length} หลัก)` };
+          }
         }
         return { valid: true };
       }
@@ -861,7 +1029,7 @@
       const bankName = document.getElementById('newBankName').value;
       const accountNo = document.getElementById('newBankAccountNo').value;
 
-      const valCheck = validateBankAccount(bankName, accountNo);
+      const valCheck = validateBankAccount(bankName, accountNo, 'new');
       if (!valCheck.valid) {
         showToast(valCheck.message, 'warning');
         document.getElementById('newBankAccountNo').focus();
@@ -1036,7 +1204,7 @@
       const bankName = document.getElementById('editBankName').value;
       const accountNo = document.getElementById('editBankAccountNo').value;
 
-      const valCheck = validateBankAccount(bankName, accountNo);
+      const valCheck = validateBankAccount(bankName, accountNo, 'edit');
       if (!valCheck.valid) {
         showToast(valCheck.message, 'warning');
         document.getElementById('editBankAccountNo').focus();
