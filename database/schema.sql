@@ -20,9 +20,9 @@ CREATE TABLE roles (
 
 CREATE TABLE permissions (
     id SERIAL PRIMARY KEY,
-    code VARCHAR(100) NOT NULL UNIQUE,            -- รหัสสิทธิ์ เช่น 'expense.create', 'file.upload_receipt'
+    code VARCHAR(100) NOT NULL UNIQUE,            
     name VARCHAR(150) NOT NULL,
-    module VARCHAR(50) NOT NULL,                  -- กลุ่มของสิทธิ์ เช่น 'EXPENSE', 'USER', 'ROLE', 'ACL', 'LOG', 'FILE'
+    module VARCHAR(50) NOT NULL,                
     description VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

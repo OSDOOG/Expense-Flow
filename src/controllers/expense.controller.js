@@ -622,9 +622,29 @@ exports.deleteAllExpenses = async (req, res) => {
     const countRes = await client.query('SELECT COUNT(*) AS total FROM expense_requests');
     const totalCount = parseInt(countRes.rows[0].total, 10);
 
+    // ฟังก์ชันช่วยลบไฟล์รูปภาพในโฟลเดอร์ uploads โดยไม่ลบ .gitkeep
+    const cleanUploadDirs = () => {
+      const receiptsDir = path.join(__dirname, '../../uploads/receipts');
+      const slipsDir = path.join(__dirname, '../../uploads/slips');
+      [receiptsDir, slipsDir].forEach(dir => {
+        if (fs.existsSync(dir)) {
+          const files = fs.readdirSync(dir);
+          for (const file of files) {
+            if (file === '.gitkeep') continue;
+            const fp = path.join(dir, file);
+            try {
+              if (fs.statSync(fp).isFile()) fs.unlinkSync(fp);
+            } catch (e) { /* ignore */ }
+          }
+        }
+      });
+    };
+
     if (totalCount === 0) {
+      // แม้ไม่มีรายการในฐานข้อมูล แต่ก็ช่วยทำความสะอาดไฟล์ขยะที่อาจค้างในโฟลเดอร์
+      cleanUploadDirs();
       await client.query('ROLLBACK');
-      return res.json({ success: true, message: 'ไม่มีรายการคำขอเบิกจ่ายให้ลบในระบบ' });
+      return res.json({ success: true, message: 'ไม่มีรายการคำขอเบิกจ่ายในระบบ (ล้างไฟล์แนบที่ตกค้างเรียบร้อยแล้ว)' });
     }
 
     await client.query('DELETE FROM expense_attachments');
@@ -636,19 +656,7 @@ exports.deleteAllExpenses = async (req, res) => {
     await client.query(`CREATE SEQUENCE expense_req_seq START 1`);
 
     // ลบไฟล์จริงในโฟลเดอร์ uploads/receipts และ uploads/slips
-    const receiptsDir = path.join(__dirname, '../../uploads/receipts');
-    const slipsDir = path.join(__dirname, '../../uploads/slips');
-    [receiptsDir, slipsDir].forEach(dir => {
-      if (fs.existsSync(dir)) {
-        const files = fs.readdirSync(dir);
-        for (const file of files) {
-          const fp = path.join(dir, file);
-          try {
-            if (fs.statSync(fp).isFile()) fs.unlinkSync(fp);
-          } catch (e) { /* ignore */ }
-        }
-      }
-    });
+    cleanUploadDirs();
 
     await client.query('COMMIT');
 
