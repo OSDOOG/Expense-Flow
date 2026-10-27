@@ -17,9 +17,14 @@ exports.uploadFile = async (req, res) => {
     return res.status(400).json({ success: false, error: 'กรุณาระบุ request_id และ file_type' });
   }
 
+  const client = await db.pool.connect();
   try {
-    const reqCheck = await db.query('SELECT * FROM expense_requests WHERE id = $1', [request_id]);
+    await client.query('BEGIN');
+
+    // 🛡️ ป้องกัน Race Condition: ล็อค Row คำขอเบิกเงินด้วย FOR UPDATE เพื่อความถูกต้องของสถานะและการผูกไฟล์
+    const reqCheck = await client.query('SELECT * FROM expense_requests WHERE id = $1 FOR UPDATE', [request_id]);
     if (reqCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
       if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
       return res.status(404).json({ success: false, error: 'ไม่พบคำขอเบิกเงินนี้ในระบบ' });
     }
@@ -27,13 +32,14 @@ exports.uploadFile = async (req, res) => {
     const currentReq = reqCheck.rows[0];
 
     const requiredPerm = file_type === 'PAYMENT_SLIP' ? 'file.upload_slip' : 'file.upload_receipt';
-    const permRes = await db.query(`
+    const permRes = await client.query(`
       SELECT p.code FROM role_permissions rp
       JOIN permissions p ON rp.permission_id = p.id
       WHERE rp.role_id = $1 AND p.code = $2
     `, [user.role_id, requiredPerm]);
 
     if (permRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
       await logAudit({
         userId: user.id,
@@ -51,6 +57,7 @@ exports.uploadFile = async (req, res) => {
     }
 
     if (file_type === 'PAYMENT_SLIP' && !['APPROVED_MANAGER', 'PAID'].includes(currentReq.status)) {
+      await client.query('ROLLBACK');
       if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
       return res.status(400).json({
         success: false,
@@ -74,7 +81,7 @@ exports.uploadFile = async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
     `;
-    const result = await db.query(query, [
+    const result = await client.query(query, [
       request_id,
       file_type,
       decodedOriginalName,
@@ -86,6 +93,7 @@ exports.uploadFile = async (req, res) => {
     ]);
 
     const created = result.rows[0];
+    await client.query('COMMIT');
 
     const actorDisplayName = `${user.full_name} (@${user.username})`;
     await logAudit({
@@ -106,9 +114,12 @@ exports.uploadFile = async (req, res) => {
     });
 
   } catch (err) {
+    await client.query('ROLLBACK');
     if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
     console.error('uploadFile error:', err);
     res.status(500).json({ success: false, error: 'เกิดข้อผิดพลาดในการบันทึกไฟล์' });
+  } finally {
+    client.release();
   }
 };
 
@@ -372,15 +383,21 @@ exports.deleteFile = async (req, res) => {
   const user = req.user;
   const isAdmin = user.role_name.toLowerCase() === 'admin';
 
+  const client = await db.pool.connect();
   try {
-    const fileRes = await db.query(`
+    await client.query('BEGIN');
+
+    // 🛡️ ป้องกัน Race Condition: ล็อคทั้งแถวเอกสารและแถวคำขอเบิกเงิน เพื่อป้องกันการลบขณะมีผู้อนุมัติ/จ่ายเงิน
+    const fileRes = await client.query(`
       SELECT a.*, e.user_id AS request_owner_id, e.status AS request_status
       FROM expense_attachments a
       JOIN expense_requests e ON a.request_id = e.id
       WHERE a.id = $1
+      FOR UPDATE OF a, e
     `, [id]);
 
     if (fileRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, error: 'ไม่พบไฟล์ที่ต้องการลบ' });
     }
 
@@ -388,6 +405,7 @@ exports.deleteFile = async (req, res) => {
 
     // กฎความปลอดภัยระดับสูง: หากคำขอได้รับการอนุมัติแล้ว (APPROVED_MANAGER) หรือจ่ายเงินแล้ว (PAID) ไม่อนุญาตให้ลบเอกสารหลักฐานเด็ดขาด
     if (['APPROVED_MANAGER', 'PAID'].includes(file.request_status)) {
+      await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
         error: `ไม่สามารถลบเอกสารแนบได้ เนื่องจากคำขอนี้ได้รับการอนุมัติแล้ว (${file.request_status === 'PAID' ? 'จ่ายเงินแล้ว' : 'อนุมัติแล้ว/รอจ่ายเงิน'})`
@@ -398,6 +416,7 @@ exports.deleteFile = async (req, res) => {
       const isUploader = file.uploaded_by === user.id;
 
       if (!isUploader) {
+        await client.query('ROLLBACK');
         await logAudit({
           userId: user.id,
           username: user.username,
@@ -411,6 +430,9 @@ exports.deleteFile = async (req, res) => {
       }
     }
 
+    await client.query('DELETE FROM expense_attachments WHERE id = $1', [id]);
+    await client.query('COMMIT');
+
     const absolutePath = path.join(__dirname, '../../', file.file_path);
     if (fs.existsSync(absolutePath)) {
       try {
@@ -419,8 +441,6 @@ exports.deleteFile = async (req, res) => {
         console.warn('Cannot delete physical file:', err.message);
       }
     }
-
-    await db.query('DELETE FROM expense_attachments WHERE id = $1', [id]);
 
     const actorDisplayName = `${user.full_name} (@${user.username})`;
     await logAudit({
@@ -436,8 +456,10 @@ exports.deleteFile = async (req, res) => {
 
     res.json({ success: true, message: `ลบไฟล์ "${file.original_name}" เรียบร้อยแล้ว` });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('deleteFile error:', err);
     res.status(500).json({ success: false, error: 'เกิดข้อผิดพลาดในการลบไฟล์' });
+  } finally {
+    client.release();
   }
 };
-
