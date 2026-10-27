@@ -143,43 +143,52 @@ exports.createExpense = async (req, res) => {
     const currentYear = new Date().getFullYear();
     const prefix = `EXP-${currentYear}-`;
 
-    // ค้นหาเลขที่คำขอล่าสุดของปีปัจจุบัน เพื่อป้องกันการซ้ำกับข้อมูลที่ seed ไว้
-    const maxRes = await db.query(
-      `SELECT request_no FROM expense_requests 
-       WHERE request_no LIKE $1 
-       ORDER BY request_no DESC LIMIT 1`,
-      [`${prefix}%`]
-    );
+    // 🛡️ ป้องกัน Race Condition: ใช้ PostgreSQL Sequence เพื่อแจกเลขลำดับแบบ Atomic (Thread-safe)
+    await db.query(`CREATE SEQUENCE IF NOT EXISTS expense_req_seq START 1`);
 
-    let nextNum = 1;
-    if (maxRes.rows.length > 0) {
-      const lastNo = maxRes.rows[0].request_no;
-      const parts = lastNo.split('-');
-      const lastSequence = parseInt(parts[parts.length - 1], 10);
-      if (!isNaN(lastSequence)) {
-        nextNum = lastSequence + 1;
+    let created = null;
+    let attempts = 0;
+    while (!created && attempts < 5) {
+      attempts++;
+      const seqRes = await db.query(`SELECT nextval('expense_req_seq') AS seq`);
+      const nextNum = parseInt(seqRes.rows[0].seq, 10);
+      const requestNo = `${prefix}${String(nextNum).padStart(4, '0')}`;
+
+      try {
+        const query = `
+          INSERT INTO expense_requests (request_no, user_id, title, category, total_amount, description, bank_name, bank_account_no, status)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING_MANAGER')
+          RETURNING *
+        `;
+        const result = await db.query(query, [
+          requestNo,
+          user.id,
+          title.trim(),
+          category,
+          amount,
+          description ? description.trim() : null,
+          bank_name ? bank_name.trim() : null,
+          bank_account_no ? bank_account_no.trim() : null
+        ]);
+        created = result.rows[0];
+      } catch (insertErr) {
+        // หากเลขชนกับข้อมูลเก่าที่เคย seed ไว้ ให้ขยับ sequence ไปยังเลขสูงสุดของปีแล้ววนรอบถัดไป
+        if (insertErr.code === '23505' && insertErr.detail && insertErr.detail.includes('request_no')) {
+          await db.query(`
+            SELECT setval('expense_req_seq', GREATEST(
+              (SELECT COALESCE(MAX(NULLIF(regexp_replace(request_no, '^.*-', ''), ''))::int, 0) FROM expense_requests WHERE request_no LIKE $1),
+              nextval('expense_req_seq')
+            ))
+          `, [`${prefix}%`]);
+          continue;
+        }
+        throw insertErr;
       }
     }
 
-    const requestNo = `${prefix}${String(nextNum).padStart(4, '0')}`;
-
-    const query = `
-      INSERT INTO expense_requests (request_no, user_id, title, category, total_amount, description, bank_name, bank_account_no, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING_MANAGER')
-      RETURNING *
-    `;
-    const result = await db.query(query, [
-      requestNo,
-      user.id,
-      title.trim(),
-      category,
-      amount,
-      description ? description.trim() : null,
-      bank_name ? bank_name.trim() : null,
-      bank_account_no ? bank_account_no.trim() : null
-    ]);
-
-    const created = result.rows[0];
+    if (!created) {
+      return res.status(500).json({ success: false, error: 'ไม่สามารถสร้างเลขที่คำขอได้ กรุณาลองใหม่อีกครั้ง' });
+    }
 
     const bankLog = created.bank_name ? ` (โอนเข้า ${created.bank_name} เลขที่ ${created.bank_account_no || '-'})` : '';
     await logAudit({
@@ -188,7 +197,7 @@ exports.createExpense = async (req, res) => {
       action: 'CREATE',
       resource: 'EXPENSE',
       resourceId: created.id,
-      details: `สร้างคำขอเบิกเงิน ${requestNo} ยอด ${amount.toLocaleString()} บาท${bankLog}`,
+      details: `สร้างคำขอเบิกเงิน ${created.request_no} ยอด ${amount.toLocaleString()} บาท${bankLog}`,
       ipAddress: req.ip,
       status: 'SUCCESS'
     });
@@ -222,15 +231,21 @@ exports.updateExpense = async (req, res) => {
     return res.status(400).json({ success: false, error: 'ยอดเงินเกินขีดจำกัดสูงสุดที่ระบบรองรับ' });
   }
 
+  const client = await db.pool.connect();
   try {
-    const checkRes = await db.query('SELECT * FROM expense_requests WHERE id = $1', [id]);
+    await client.query('BEGIN');
+
+    // 🛡️ ป้องกัน Race Condition: ล็อค Row ด้วย FOR UPDATE เพื่อป้องกันการแก้ไขในจังหวะที่หัวหน้างานกำลังกดอนุมัติ/จ่ายเงิน
+    const checkRes = await client.query('SELECT * FROM expense_requests WHERE id = $1 FOR UPDATE', [id]);
     if (checkRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, error: 'ไม่พบคำขอเบิกจ่ายนี้' });
     }
 
     const item = checkRes.rows[0];
 
     if (!isAdmin && item.user_id !== user.id) {
+      await client.query('ROLLBACK');
       await logAudit({
         userId: user.id,
         username: user.username,
@@ -244,9 +259,10 @@ exports.updateExpense = async (req, res) => {
     }
 
     if (!isAdmin && ['APPROVED_MANAGER', 'PAID'].includes(item.status)) {
+      await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
-        error: 'ไม่สามารถแก้ไขคำขอที่ได้รับการอนุมัติหรือจ่ายเงินไปแล้วได้'
+        error: `ไม่สามารถแก้ไขได้ เนื่องจากคำขอนี้ได้รับการอนุมัติหรือจ่ายเงินไปแล้ว (สถานะปัจจุบัน: ${item.status})`
       });
     }
 
@@ -270,7 +286,7 @@ exports.updateExpense = async (req, res) => {
       WHERE id = $7
       RETURNING *
     `;
-    const result = await db.query(updateQuery, [
+    const result = await client.query(updateQuery, [
       title.trim(),
       category,
       amount,
@@ -279,6 +295,8 @@ exports.updateExpense = async (req, res) => {
       bank_account_no ? bank_account_no.trim() : null,
       id
     ]);
+
+    await client.query('COMMIT');
 
     const changeDetails = changes.length > 0 ? changes.join(', ') : 'ไม่มีการเปลี่ยนแปลงฟิลด์หลัก';
     const actorDisplayName = `${user.full_name} (@${user.username})`;
@@ -299,8 +317,11 @@ exports.updateExpense = async (req, res) => {
       data: result.rows[0]
     });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('updateExpense error:', err);
     res.status(500).json({ success: false, error: 'เกิดข้อผิดพลาดในการแก้ไขคำขอ' });
+  } finally {
+    client.release();
   }
 };
 
@@ -538,9 +559,14 @@ exports.deleteExpense = async (req, res) => {
   const user = req.user;
   const isAdmin = user.role_name.toLowerCase() === 'admin';
 
+  const client = await db.pool.connect();
   try {
-    const checkRes = await db.query('SELECT * FROM expense_requests WHERE id = $1', [id]);
+    await client.query('BEGIN');
+
+    // 🛡️ ป้องกัน Race Condition: ล็อค Row เพื่อป้องกันการลบขณะที่กำลังมีการอนุมัติหรือจ่ายเงิน
+    const checkRes = await client.query('SELECT * FROM expense_requests WHERE id = $1 FOR UPDATE', [id]);
     if (checkRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, error: 'ไม่พบคำขอเบิกจ่ายนี้' });
     }
 
@@ -548,6 +574,7 @@ exports.deleteExpense = async (req, res) => {
 
     if (!isAdmin) {
       if (item.user_id !== user.id) {
+        await client.query('ROLLBACK');
         await logAudit({
           userId: user.id,
           username: user.username,
@@ -561,14 +588,22 @@ exports.deleteExpense = async (req, res) => {
       }
 
       if (['APPROVED_MANAGER', 'PAID'].includes(item.status)) {
+        await client.query('ROLLBACK');
         return res.status(400).json({
           success: false,
-          error: 'ไม่สามารถยกเลิก/ลบคำขอที่ได้รับการอนุมัติหรือจ่ายเงินไปแล้วได้'
+          error: `ไม่สามารถยกเลิก/ลบคำขอที่ได้รับการอนุมัติหรือจ่ายเงินไปแล้วได้ (สถานะปัจจุบัน: ${item.status})`
         });
       }
     }
 
-    const attachFiles = await db.query('SELECT file_path FROM expense_attachments WHERE request_id = $1', [id]);
+    const attachFiles = await client.query('SELECT file_path FROM expense_attachments WHERE request_id = $1', [id]);
+
+    await client.query('DELETE FROM expense_attachments WHERE request_id = $1', [id]);
+    await client.query('DELETE FROM expense_requests WHERE id = $1', [id]);
+
+    await client.query('COMMIT');
+
+    // ลบไฟล์จริงในเครื่องหลังจาก Transaction ผ่านฉลุยแล้ว
     for (const af of attachFiles.rows) {
       if (af.file_path) {
         const absPath = path.join(__dirname, '../../', af.file_path);
@@ -577,9 +612,6 @@ exports.deleteExpense = async (req, res) => {
         }
       }
     }
-
-    await db.query('DELETE FROM expense_attachments WHERE request_id = $1', [id]);
-    await db.query('DELETE FROM expense_requests WHERE id = $1', [id]);
 
     const actorDisplayName = `${user.full_name} (@${user.username})`;
     await logAudit({
@@ -594,8 +626,11 @@ exports.deleteExpense = async (req, res) => {
 
     res.json({ success: true, message: `ลบคำขอ ${item.request_no} เรียบร้อยแล้ว` });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('deleteExpense error:', err);
     res.status(500).json({ success: false, error: 'เกิดข้อผิดพลาดในการลบคำขอ' });
+  } finally {
+    client.release();
   }
 };
 
@@ -682,4 +717,3 @@ exports.deleteAllExpenses = async (req, res) => {
     client.release();
   }
 };
-
